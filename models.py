@@ -9,7 +9,7 @@ class User(db.Model, UserMixin):
     __tablename__ = "user"
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
+    name = db.Column(db.String(100), nullable=False)  # Full name used for display
     email = db.Column(db.String(100), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
     role = db.Column(db.String(20), nullable=False)  # 'student' or 'teacher'
@@ -33,7 +33,6 @@ class Class(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     join_code = db.Column(db.String(10), unique=True, nullable=False)
-
     teacher_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
 
     # Relationships
@@ -43,23 +42,25 @@ class Class(db.Model):
 
     @property
     def enrolled_users(self):
-        """Return a list of User objects enrolled in this class"""
+        """Returns list of User objects enrolled in this class."""
         return [sc.student for sc in self.students]
 
     def __repr__(self):
         return f"<Class {self.name} | Teacher ID {self.teacher_id}>"
 
 
-# ✅ Many-to-Many for Students in a Class
+# ==========================
+# ✅ MANY-TO-MANY: STUDENT-CLASS
+# ==========================
 class StudentClass(db.Model):
     __tablename__ = "student_class"
 
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     class_id = db.Column(db.Integer, db.ForeignKey("class.id"), nullable=False)
-    joined_at = db.Column(db.DateTime, default=datetime.utcnow)  # ✅ WHEN student joined
+    joined_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # ✅ FIX: Add relationships for easy access
+    # Relationships
     student = db.relationship("User", back_populates="enrolled_classes", lazy=True)
     class_obj = db.relationship("Class", back_populates="students", lazy=True)
 
@@ -84,7 +85,7 @@ class Chapter(db.Model):
 
 
 # ==========================
-# ✅ TEST MODEL (TIME-BOUND)
+# ✅ TEST MODEL
 # ==========================
 class Test(db.Model):
     __tablename__ = "test"
@@ -95,7 +96,7 @@ class Test(db.Model):
 
     start_time = db.Column(db.DateTime, default=datetime.utcnow)
     end_time = db.Column(db.DateTime, nullable=True)
-    duration_minutes = db.Column(db.Integer, default=30)  # ✅ Added test duration
+    duration_minutes = db.Column(db.Integer, default=30)  # Test duration in minutes
     max_score = db.Column(db.Integer, default=100)
 
     # Relationships
@@ -106,7 +107,9 @@ class Test(db.Model):
         return f"<Test {self.name} | Chapter {self.chapter_id}>"
 
 
-# ✅ STUDENT ATTEMPTS WITH ANALYTICS
+# ==========================
+# ✅ STUDENT TEST ATTEMPTS
+# ==========================
 class TestAttempt(db.Model):
     __tablename__ = "test_attempt"
 
@@ -117,14 +120,12 @@ class TestAttempt(db.Model):
     score = db.Column(db.Float, default=0.0)
     attempted_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # ✅ Analytics fields
     total_questions = db.Column(db.Integer, default=0)
     correct_answers = db.Column(db.Integer, default=0)
     wrong_answers = db.Column(db.Integer, default=0)
-    time_taken = db.Column(db.Integer, default=0)  # ✅ seconds taken to complete
+    time_taken = db.Column(db.Integer, default=0)  # Seconds taken to complete test
 
-    topic_performance = db.Column(db.JSON, nullable=True)  
-    # Example: {"Strong": ["Topic A"], "Weak": ["Topic B"]}
+    topic_performance = db.Column(db.JSON, nullable=True)  # Example: {"Strong": ["Topic A"], "Weak": ["Topic B"]}
 
     answers = db.relationship("StudentAnswer", backref="attempt", lazy=True, cascade="all, delete-orphan")
 
@@ -132,7 +133,9 @@ class TestAttempt(db.Model):
         return f"<Attempt student={self.student_id} test={self.test_id} score={self.score}>"
 
 
-# ✅ PER-QUESTION ANSWERS FOR DETAILED ANALYSIS
+# ==========================
+# ✅ PER-QUESTION STUDENT ANSWERS
+# ==========================
 class StudentAnswer(db.Model):
     __tablename__ = "student_answer"
 
@@ -142,13 +145,15 @@ class StudentAnswer(db.Model):
 
     selected_option = db.Column(db.String(1), nullable=True)  # "A", "B", "C", "D"
     is_correct = db.Column(db.Boolean, default=False)
-    time_spent = db.Column(db.Integer, default=0)  # seconds spent on question
+    time_spent = db.Column(db.Integer, default=0)  # Seconds spent on question
 
     def __repr__(self):
         return f"<StudentAnswer question={self.question_id} correct={self.is_correct}>"
 
 
-# ✅ QUESTIONS WITH TOPICS & DIFFICULTY
+# ==========================
+# ✅ QUESTIONS MODEL
+# ==========================
 class Question(db.Model):
     __tablename__ = "question"
 
@@ -160,12 +165,11 @@ class Question(db.Model):
     option_b = db.Column(db.String(255), nullable=False)
     option_c = db.Column(db.String(255), nullable=False)
     option_d = db.Column(db.String(255), nullable=False)
-    correct_option = db.Column(db.String(1), nullable=False)  # "A", "B", "C", or "D"
+    correct_option = db.Column(db.String(1), nullable=False)  # "A", "B", "C", "D"
     marks = db.Column(db.Integer, default=1)
 
-    # ✅ Future fields for analytics
-    topic = db.Column(db.String(100), nullable=True)         # e.g. "Computer Vision Basics"
-    difficulty = db.Column(db.String(20), nullable=True)     # e.g. "Easy", "Medium", "Hard"
+    topic = db.Column(db.String(100), nullable=True)  # e.g. "Computer Vision Basics"
+    difficulty = db.Column(db.String(20), nullable=True)  # e.g. "Easy", "Medium", "Hard"
 
     def __repr__(self):
         return f"<Question {self.text[:20]}...>"
@@ -181,10 +185,8 @@ class Assignment(db.Model):
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, nullable=True)
     due_date = db.Column(db.DateTime, nullable=True)
-
     class_id = db.Column(db.Integer, db.ForeignKey("class.id"), nullable=False)
 
-    # Submissions
     submissions = db.relationship("AssignmentSubmission", backref="assignment", lazy=True, cascade="all, delete-orphan")
 
     def __repr__(self):
@@ -201,14 +203,14 @@ class AssignmentSubmission(db.Model):
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
     score = db.Column(db.Float, default=0.0)
     feedback = db.Column(db.Text, nullable=True)
-    improvement_score = db.Column(db.Float, default=0.0)  # ✅ Track post-followup improvement
+    improvement_score = db.Column(db.Float, default=0.0)  # Improvement after feedback
 
     def __repr__(self):
         return f"<AssignmentSubmission student={self.student_id} assignment={self.assignment_id}>"
 
 
 # ==========================
-# ✅ STUDENT ANALYTICS (AGGREGATED)
+# ✅ STUDENT ANALYTICS
 # ==========================
 class StudentAnalytics(db.Model):
     __tablename__ = "student_analytics"
@@ -218,12 +220,10 @@ class StudentAnalytics(db.Model):
     class_id = db.Column(db.Integer, db.ForeignKey("class.id"), nullable=False)
 
     overall_score = db.Column(db.Float, default=0.0)
-    weak_topics = db.Column(db.JSON, nullable=True)    # e.g. ["Math Basics", "Image Filters"]
+    weak_topics = db.Column(db.JSON, nullable=True)  # e.g. ["Math Basics", "Image Filters"]
     strong_topics = db.Column(db.JSON, nullable=True)  # e.g. ["CNNs", "Object Detection"]
 
-    # ✅ Progress tracking over time
-    history = db.Column(db.JSON, nullable=True)  
-    # Example: [{"date": "2025-07-01", "score": 65}, {"date": "2025-07-15", "score": 75}]
+    history = db.Column(db.JSON, nullable=True)  # [{"date": "2025-07-01", "score": 65}, ...]
 
     last_updated = db.Column(db.DateTime, default=datetime.utcnow)
 

@@ -1,30 +1,36 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
-# from flask_login import login_required, current_user   # 🔒 Temporarily disabled until auth is ready
+from flask_login import login_required, current_user
 from extensions import db
 from models import Class, Chapter, Test, Question, TestAttempt, User, StudentClass
 
 teacher_bp = Blueprint("teacher", __name__, url_prefix="/teacher")
 
-# ✅ TEMP fake teacher ID
-FAKE_TEACHER_ID = 1
 
-
+# ================================
+# ✅ TEACHER DASHBOARD
+# ================================
 @teacher_bp.route("/dashboard")
-# @login_required   # 🔒 Will enable after login is ready
+@login_required
 def dashboard():
-    classes = Class.query.filter_by(teacher_id=FAKE_TEACHER_ID).all()
+    classes = Class.query.filter_by(teacher_id=current_user.id).all()
     return render_template("teacher/dashboard.html", classes=classes)
 
 
-# ✅ Create Classroom
+# ================================
+# ✅ CREATE CLASSROOM
+# ================================
 @teacher_bp.route("/class/create", methods=["GET", "POST"])
-# @login_required
+@login_required
 def create_class():
     if request.method == "POST":
-        class_name = request.form.get("name")
-        join_code = request.form.get("join_code")
+        class_name = request.form.get("name", "").strip()
+        join_code = request.form.get("join_code", "").strip()
 
-        new_class = Class(name=class_name, join_code=join_code, teacher_id=FAKE_TEACHER_ID)
+        if not class_name or not join_code:
+            flash("Class name and join code are required!", "danger")
+            return redirect(url_for("teacher.create_class"))
+
+        new_class = Class(name=class_name, join_code=join_code, teacher_id=current_user.id)
         db.session.add(new_class)
         db.session.commit()
 
@@ -34,14 +40,21 @@ def create_class():
     return render_template("teacher/create_class.html")
 
 
-# ✅ View Class with Chapters, Tests & Analytics
+# ================================
+# ✅ VIEW CLASS DETAILS
+# ================================
 @teacher_bp.route("/class/<int:class_id>")
-# @login_required
+@login_required
 def view_class(class_id):
     class_obj = Class.query.get_or_404(class_id)
+
+    if class_obj.teacher_id != current_user.id:
+        flash("Unauthorized access!", "danger")
+        return redirect(url_for("teacher.dashboard"))
+
     enrolled_students = [sc.student for sc in class_obj.students]
 
-    # ✅ Compute analytics for each chapter & test
+    # Compute analytics for chapters and tests
     for chapter in class_obj.chapters:
         chapter_analytics = get_chapter_analytics(chapter.id)
         chapter.avg_score = chapter_analytics["avg"]
@@ -60,14 +73,25 @@ def view_class(class_id):
     )
 
 
-# ✅ Create Chapter
+# ================================
+# ✅ CREATE CHAPTER
+# ================================
 @teacher_bp.route("/class/<int:class_id>/create_chapter", methods=["GET", "POST"])
-# @login_required
+@login_required
 def create_chapter(class_id):
     class_obj = Class.query.get_or_404(class_id)
 
+    if class_obj.teacher_id != current_user.id:
+        flash("Unauthorized access!", "danger")
+        return redirect(url_for("teacher.dashboard"))
+
     if request.method == "POST":
-        chapter_name = request.form.get("name")
+        chapter_name = request.form.get("name", "").strip()
+
+        if not chapter_name:
+            flash("Chapter name cannot be empty!", "danger")
+            return redirect(url_for("teacher.create_chapter", class_id=class_id))
+
         new_chapter = Chapter(name=chapter_name, class_id=class_id)
         db.session.add(new_chapter)
         db.session.commit()
@@ -78,14 +102,25 @@ def create_chapter(class_id):
     return render_template("teacher/create_chapter.html", class_obj=class_obj)
 
 
-# ✅ Create Test inside a Chapter
+# ================================
+# ✅ CREATE TEST
+# ================================
 @teacher_bp.route("/chapter/<int:chapter_id>/create_test", methods=["GET", "POST"])
-# @login_required
+@login_required
 def create_test(chapter_id):
     chapter_obj = Chapter.query.get_or_404(chapter_id)
 
+    if chapter_obj.class_.teacher_id != current_user.id:
+        flash("Unauthorized access!", "danger")
+        return redirect(url_for("teacher.dashboard"))
+
     if request.method == "POST":
-        test_name = request.form.get("name")
+        test_name = request.form.get("name", "").strip()
+
+        if not test_name:
+            flash("Test name cannot be empty!", "danger")
+            return redirect(url_for("teacher.create_test", chapter_id=chapter_id))
+
         new_test = Test(name=test_name, chapter_id=chapter_id)
         db.session.add(new_test)
         db.session.commit()
@@ -96,22 +131,33 @@ def create_test(chapter_id):
     return render_template("teacher/create_test.html", chapter_obj=chapter_obj)
 
 
+# ================================
+# ✅ MANAGE TEST (ADD QUESTIONS)
+# ================================
 @teacher_bp.route("/test/<int:test_id>/manage", methods=["GET", "POST"])
-# @login_required
+@login_required
 def manage_test(test_id):
     test_obj = Test.query.get_or_404(test_id)
-    questions = Question.query.filter_by(test_id=test_id).all()
 
+    if test_obj.chapter.class_.teacher_id != current_user.id:
+        flash("Unauthorized access!", "danger")
+        return redirect(url_for("teacher.dashboard"))
+
+    questions = Question.query.filter_by(test_id=test_id).all()
     current_total_marks = sum(q.marks for q in questions if hasattr(q, "marks") and q.marks)
 
     if request.method == "POST":
-        q_text = request.form.get("question_text")
-        opt_a = request.form.get("option_a")
-        opt_b = request.form.get("option_b")
-        opt_c = request.form.get("option_c")
-        opt_d = request.form.get("option_d")
-        correct_opt = request.form.get("correct_option")
+        q_text = request.form.get("question_text", "").strip()
+        opt_a = request.form.get("option_a", "").strip()
+        opt_b = request.form.get("option_b", "").strip()
+        opt_c = request.form.get("option_c", "").strip()
+        opt_d = request.form.get("option_d", "").strip()
+        correct_opt = request.form.get("correct_option", "").strip()
         marks = int(request.form.get("marks") or 1)
+
+        if not q_text or not correct_opt:
+            flash("Question text and correct option are required!", "danger")
+            return redirect(url_for("teacher.manage_test", test_id=test_id))
 
         if current_total_marks + marks > test_obj.max_score:
             flash(f"❌ Cannot add question! Total marks would exceed max score ({test_obj.max_score}).", "danger")
@@ -142,13 +188,19 @@ def manage_test(test_id):
     )
 
 
-# ✅ Delete Question
+# ================================
+# ✅ DELETE QUESTION
+# ================================
 @teacher_bp.route("/question/<int:question_id>/delete", methods=["POST"])
-# @login_required
+@login_required
 def delete_question(question_id):
     question = Question.query.get_or_404(question_id)
-    test_id = question.test_id
 
+    if question.test.chapter.class_.teacher_id != current_user.id:
+        flash("Unauthorized action!", "danger")
+        return redirect(url_for("teacher.dashboard"))
+
+    test_id = question.test_id
     db.session.delete(question)
     db.session.commit()
 
@@ -156,30 +208,43 @@ def delete_question(question_id):
     return redirect(url_for("teacher.manage_test", test_id=test_id))
 
 
-# ✅ Edit Question
+# ================================
+# ✅ EDIT QUESTION
+# ================================
 @teacher_bp.route("/question/<int:question_id>/edit", methods=["POST"])
-# @login_required
+@login_required
 def edit_question(question_id):
     question = Question.query.get_or_404(question_id)
 
-    question.text = request.form.get("edit_text")
-    question.option_a = request.form.get("edit_option_a")
-    question.option_b = request.form.get("edit_option_b")
-    question.option_c = request.form.get("edit_option_c")
-    question.option_d = request.form.get("edit_option_d")
-    question.correct_option = request.form.get("edit_correct_option")
+    if question.test.chapter.class_.teacher_id != current_user.id:
+        flash("Unauthorized action!", "danger")
+        return redirect(url_for("teacher.dashboard"))
+
+    question.text = request.form.get("edit_text", "").strip()
+    question.option_a = request.form.get("edit_option_a", "").strip()
+    question.option_b = request.form.get("edit_option_b", "").strip()
+    question.option_c = request.form.get("edit_option_c", "").strip()
+    question.option_d = request.form.get("edit_option_d", "").strip()
+    question.correct_option = request.form.get("edit_correct_option", "").strip()
 
     db.session.commit()
     flash("✅ Question updated!", "success")
     return redirect(url_for("teacher.manage_test", test_id=question.test_id))
 
 
+# ================================
+# ✅ DELETE TEST
+# ================================
 @teacher_bp.route("/test/<int:test_id>/delete", methods=["POST"])
-# @login_required
+@login_required
 def delete_test(test_id):
     test = Test.query.get_or_404(test_id)
-    class_id = test.chapter.class_id  # get before deleting
 
+    if test.chapter.class_.teacher_id != current_user.id:
+        flash("Unauthorized action!", "danger")
+        return redirect(url_for("teacher.dashboard"))
+
+    class_id = test.chapter.class_id
     db.session.delete(test)
     db.session.commit()
 
@@ -187,11 +252,17 @@ def delete_test(test_id):
     return redirect(url_for("teacher.view_class", class_id=class_id))
 
 
-# ✅ View all students in a class with analytics
+# ================================
+# ✅ VIEW STUDENTS & ANALYTICS
+# ================================
 @teacher_bp.route("/class/<int:class_id>/students")
-# @login_required
+@login_required
 def class_students(class_id):
     class_obj = Class.query.get_or_404(class_id)
+
+    if class_obj.teacher_id != current_user.id:
+        flash("Unauthorized access!", "danger")
+        return redirect(url_for("teacher.dashboard"))
 
     students = (
         db.session.query(User)
@@ -242,7 +313,9 @@ def class_students(class_id):
     )
 
 
-# ✅ Analytics helpers
+# ================================
+# ✅ ANALYTICS HELPERS
+# ================================
 def get_test_analytics(test_id):
     attempts = TestAttempt.query.filter_by(test_id=test_id).all()
     if not attempts:
