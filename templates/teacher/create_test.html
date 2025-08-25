@@ -12,7 +12,7 @@
     
     <!-- Test Name -->
     <div>
-      <label class="block text-sm font-medium text-gray-700">Test Name</label>
+      <label class="block text-sm font-medium text-gray-700 p-2">Test Name</label>
       <input type="text" name="name" placeholder="Enter test name"
              class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
              required>
@@ -20,21 +20,21 @@
 
     <!-- Start Time -->
     <div>
-      <label class="block text-sm font-medium text-gray-700">Start Time</label>
+      <label class="block text-sm font-medium text-gray-700 p-2">Start Time</label>
       <input type="datetime-local" name="start_time"
              class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
     </div>
 
     <!-- End Time -->
     <div>
-      <label class="block text-sm font-medium text-gray-700">End Time</label>
+      <label class="block text-sm font-medium text-gray-700 p-2">End Time</label>
       <input type="datetime-local" name="end_time"
              class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
     </div>
 
     <!-- Max Score -->
     <div>
-      <label class="block text-sm font-medium text-gray-700">Max Score</label>
+      <label class="block text-sm font-medium text-gray-700 p-2">Max Score</label>
       <input type="number" name="max_score" placeholder="100"
              class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
     </div>
@@ -44,8 +44,10 @@
       <!-- ✅ FIX: also use chapter_obj -->
       <a href="{{ url_for('teacher.view_class', class_id=chapter_obj.class_id) }}" 
          class="text-gray-500 hover:underline">Cancel</a>
-      <button type="submit" 
-              class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+      <button type="submit" class="px-4 py-2 text-white rounded-lg font-semibold 
+               bg-gradient-to-r from-indigo-600 to-purple-600 
+               hover:from-indigo-700 hover:to-purple-700 transition"> 
+
         Create Test
       </button>
     </div>

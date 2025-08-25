@@ -1,34 +1,114 @@
-{% extends "base.html" %}
+{% extends 'base.html' %}
 {% block title %}Teacher Dashboard{% endblock %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto px-6 fade-up">
-    <h1 class="text-3xl font-bold mb-6">Teacher Dashboard</h1>
+<div class="max-w-7xl mx-auto px-6 py-10">
+
+    <!-- Header -->
+    <div class="text-center mb-10">
+        <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-700 to-purple-700 ">
+            Teacher Dashboard
+        </h1>
+        <p class="mt-2 text-gray-700 text-lg">Manage your classes, view analytics, and create tests easily!</p>
+    </div>
 
     <!-- Create Class Button -->
-    <div class="flex justify-end mb-6">
+    <div class="flex justify-end mb-8">
         <a href="{{ url_for('teacher.create_class') }}"
-           class="px-4 py-2 rounded-lg bg-gradient-to-r from-indigo-700 to-purple-700 text-white shadow hover:scale-105 transition">
+           class="px-5 py-3 rounded-xl bg-gradient-to-r from-indigo-700 to-purple-700 text-white font-semibold shadow-lg transform hover:scale-105 transition duration-300">
             + Create New Class
         </a>
     </div>
 
     <!-- List of Classes -->
     {% if classes %}
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
             {% for c in classes %}
-            <div class="bg-white p-5 rounded-xl shadow hover:shadow-lg transition">
-                <h2 class="text-xl font-semibold">{{ c.name }}</h2>
-                <p class="text-gray-500 text-sm">Join Code: <span class="font-mono">{{ c.join_code }}</span></p>
-                <div class="mt-4 flex justify-between">
+            {% set gradients = [
+                'from-indigo-700 to-purple-700', 
+                'from-pink-500 to-red-500', 
+                'from-green-400 to-teal-500',
+                'from-yellow-400 to-orange-500',
+                'from-blue-400 to-indigo-500',
+                'from-purple-500 to-pink-500'
+            ] %}
+            {% set gradient = gradients[loop.index0 % gradients|length] %}
+
+            <div class="bg-gradient-to-r {{ gradient }} text-white p-6 rounded-2xl shadow-lg transform hover:scale-105 transition duration-300">
+                <h2 class="text-2xl font-bold mb-2">{{ c.name }}</h2>
+                <div class="mt-4 flex justify-between items-center">
                     <a href="{{ url_for('teacher.view_class', class_id=c.id) }}"
-                       class="text-indigo-600 hover:underline">View Class →</a>
+                       class="text-white font-semibold hover:underline">View Class →</a>
+                    <span class="text-xs bg-white/20 px-2 py-1 rounded">Active</span>
                 </div>
             </div>
             {% endfor %}
         </div>
     {% else %}
-        <p class="text-gray-500 text-center mt-10">No classes created yet.</p>
+        <p class="text-gray-500 text-center mt-10 text-lg">No classes created yet. Click the button above to create one!</p>
     {% endif %}
+
+    <!-- Analytics Section (Always at Bottom) -->
+    <div class="mt-16">
+        <h2 class="text-2xl font-bold mb-6 text-gray-800">Analytics Overview</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            
+            <!-- Bar Chart -->
+            <div class="bg-white p-6 rounded-2xl shadow-lg">
+                <h3 class="text-xl font-bold mb-4 text-gray-700">Class Performance</h3>
+                <canvas id="performanceChart" class="w-full h-64"></canvas>
+            </div>
+
+            <!-- Pie Chart -->
+            <div class="bg-white p-6 rounded-2xl shadow-lg">
+                <h3 class="text-xl font-bold mb-4 text-gray-700">Attendance Overview</h3>
+                <canvas id="attendanceChart" class="w-full h-64"></canvas>
+            </div>
+        </div>
+    </div>
 </div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    const classLabels = [{% for c in classes %}"{{ c.name }}",{% endfor %}];
+    const classScores = [{% for c in classes %}{{ c.average_score if c.average_score else 0 }},{% endfor %}];
+    const classAttendance = [{% for c in classes %}{{ c.attendance_percentage if c.attendance_percentage else 0 }},{% endfor %}];
+
+    // Performance Chart
+    new Chart(document.getElementById('performanceChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: classLabels,
+            datasets: [{
+                label: 'Average Score',
+                data: classScores,
+                backgroundColor: [
+                    'rgba(99, 102, 241, 0.7)','rgba(139, 92, 246, 0.7)',
+                    'rgba(236, 72, 153, 0.7)','rgba(16, 185, 129, 0.7)',
+                    'rgba(234, 179, 8, 0.7)','rgba(59, 130, 246, 0.7)'
+                ],
+                borderRadius: 8
+            }]
+        },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: 100 } } }
+    });
+
+    // Attendance Chart
+    new Chart(document.getElementById('attendanceChart').getContext('2d'), {
+        type: 'pie',
+        data: {
+            labels: classLabels,
+            datasets: [{
+                data: classAttendance,
+                backgroundColor: [
+                    'rgba(99, 102, 241, 0.7)','rgba(139, 92, 246, 0.7)',
+                    'rgba(236, 72, 153, 0.7)','rgba(16, 185, 129, 0.7)',
+                    'rgba(234, 179, 8, 0.7)','rgba(59, 130, 246, 0.7)'
+                ]
+            }]
+        },
+        options: { responsive: true }
+    });
+</script>
 {% endblock %}

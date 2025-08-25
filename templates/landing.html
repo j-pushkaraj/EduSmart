@@ -36,7 +36,13 @@
         </div>
       </div>
       <div class="hero-img">
-        <img src="{{ url_for('static', filename='images/illustration-learning.png') }}" alt="Personalized learning illustration">
+        <div class="hero-img">
+  <video autoplay muted loop playsinline>
+    <source src="{{ url_for('static', filename='video/landing_video.mp4') }}" type="video/mp4">
+    Your browser does not support the video tag.
+  </video>
+</div>
+
       </div>
     </div>
   </section>
@@ -74,24 +80,26 @@
   </section>
 
   <!-- HOW IT WORKS -->
-  <section id="how" class="how-it-works fade-up">
-    <h2 style="text-align:center;">How EduSmart Works</h2>
-    <p class="subtitle" style="text-align:center;">We simplify the learning journey for students and give teachers the tools to support them better.</p>
-    <div class="steps">
-      <div class="step fade-up">
-        <h4>Step 1: Assess</h4>
-        <p>Students take an initial test. EduSmart identifies their weak areas automatically.</p>
-      </div>
-      <div class="step fade-up">
-        <h4>Step 2: Recommend</h4>
-        <p>AI suggests personalized lessons & practice quizzes to improve problem areas.</p>
-      </div>
-      <div class="step fade-up">
-        <h4>Step 3: Track & Improve</h4>
-        <p>Teachers see detailed insights, conduct exams, and monitor student growth.</p>
-      </div>
+
+<section id="how" class="how-it-works fade-up">
+  <h2 class="gradient-text" style="text-align:center;">How EduSmart Works</h2>
+  <p class="subtitle" style="text-align:center;">We simplify the learning journey for students and give teachers the tools to support them better.</p>
+  <div class="steps">
+    <div class="step fade-up">
+      <h4>Step 1: Assess</h4>
+      <p>Students take an initial test. EduSmart identifies their weak areas automatically.</p>
     </div>
-  </section>
+    <div class="step fade-up">
+      <h4>Step 2: Recommend</h4>
+      <p>AI suggests personalized lessons & practice quizzes to improve problem areas.</p>
+    </div>
+    <div class="step fade-up">
+      <h4>Step 3: Track & Improve</h4>
+      <p>Teachers see detailed insights, conduct exams, and monitor student growth.</p>
+    </div>
+  </div>
+</section>
+
 
   <!-- CTA -->
   <section class="cta fade-up">

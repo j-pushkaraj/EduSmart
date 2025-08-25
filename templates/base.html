@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full bg-gray-50">
+<html lang="en" class="h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,30 +12,41 @@
 
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
-    
 </head>
-<body class="flex flex-col min-h-screen bg-gradient-to-br from-gray-50 to-white text-gray-900">
+<body class="flex flex-col min-h-screen bg-cyan-50 text-gray-900">
 
     <!-- ✅ Transparent Navbar -->
     <nav class="fixed w-full bg-white/80 backdrop-blur-md shadow-sm z-50">
-        <div class="max-w-7xl mx-auto px-6 flex justify-between items-center h-16">
+        <div class="max-w-7xl mx-auto px-6 flex items-center h-16 relative">
+
+            <!-- Left Logo -->
             <div class="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-700 to-purple-700">
                 EduSmart
             </div>
-            <div class="hidden md:flex space-x-6 text-sm font-medium">
+
+            {% if not current_user.is_authenticated %}
+            <!-- Center Nav Links (only if not logged in) -->
+            <div class="hidden md:flex space-x-6 text-sm font-medium absolute left-1/2 transform -translate-x-1/2">
                 <a href="/" class="hover:text-indigo-600 transition">Home</a>
                 <a href="/auth/login" class="hover:text-indigo-600 transition">Login</a>
+            </div>
+
+            <!-- Right CTA Button (only if not logged in) -->
+            <div class="ml-auto">
                 <a href="/auth/signup" class="px-4 py-2 rounded-lg bg-gradient-to-r from-indigo-700 to-purple-700 text-white font-semibold shadow hover:scale-105 transition">
                     Get Started
                 </a>
             </div>
+            {% endif %}
+
         </div>
     </nav>
 
     <!-- ✅ Page Content -->
     <main class="flex-grow pt-20">
-        {% block content %}{% endblock %}
+        {% block content %}
+        <!-- Default content can go here or in child templates -->
+        {% endblock %}
     </main>
 
     <!-- ✅ Footer -->
