@@ -1,0 +1,19 @@
+body { font-family: 'Inter', sans-serif; }
+        /* Subtle fade animation */
+        .fade-up {
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeUp 0.8s ease-out forwards;
+        }
+        @keyframes fadeUp {
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        /* Glassmorphism */
+        .glass {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+
+<link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
+ <!-- <link rel="stylesheet" href="../static/css/login.css"> -->
+
+<div class="container mt-5">
+  <h2>Login</h2>
+
+  <form method="POST" action="{{ url_for('auth.login') }}">
+    <div class="mb-3">
+      <label for="username" class="form-label">Username</label>
+      <input type="text" class="form-control" name="username" required>
+    </div>
+
+    <div class="mb-3">
+      <label for="password" class="form-label">Password</label>
+      <input type="password" class="form-control" name="password" required>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Login</button>
+    <a href="{{ url_for('auth.signup') }}" class="btn btn-link">Create an account</a>
+  </form>
+</div>
+{% endblock %}

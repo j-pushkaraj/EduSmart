@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="{{url_for('static', filename='css/landing.css')}}">
+  <title>EduSmart – Personalized Learning Platform</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav>
+    <div class="logo">EduSmart</div>
+    <ul>
+      <li><a href="#">Home</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how">How It Works</a></li>
+      <li><a href="/login">Login</a></li> <!-- ✅ Redirects to login -->
+    </ul>
+    <a href="/signup" class="btn-nav">Get Started</a> <!-- ✅ Redirects to signup -->
+  </nav>
+
+  <!-- HERO SECTION -->
+  <section class="hero">
+    <div class="hero-container">
+      <div class="hero-text fade-up">
+        <h1>Turn Weakness into Strength with <span>Personalized Learning</span></h1>
+        <p>EduSmart identifies weak areas, recommends targeted content, and helps students improve while giving teachers powerful insights.</p>
+        <div class="hero-buttons">
+          <!-- ✅ Signup for students -->
+          <a href="/signup" class="btn-primary">Start Learning</a>
+          <!-- ✅ Signup for teachers -->
+          <a href="/signup" class="btn-secondary">For Teachers</a>
+        </div>
+      </div>
+      <div class="hero-img">
+        <img src="{{ url_for('static', filename='images/illustration-learning.png') }}" alt="Personalized learning illustration">
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section id="features" class="section fade-up">
+    <h2>Features for Students & Teachers</h2>
+    <p class="subtitle">EduSmart bridges the gap between students’ learning needs and teachers’ ability to track and improve outcomes.</p>
+    <div class="feature-grid">
+      <div class="feature-card fade-up">
+        <h3>Know Your Weak Areas</h3>
+        <p>Students can instantly identify topics they struggle with through smart assessments.</p>
+      </div>
+      <div class="feature-card fade-up">
+        <h3>Personalized Content</h3>
+        <p>AI recommends the right lessons & quizzes to strengthen weak concepts.</p>
+      </div>
+      <div class="feature-card fade-up">
+        <h3>Test & Improve</h3>
+        <p>Regular quizzes help track progress and turn weaknesses into strengths.</p>
+      </div>
+      <div class="feature-card fade-up">
+        <h3>Conduct Exams Easily</h3>
+        <p>Teachers can create and manage exams effortlessly on the platform.</p>
+      </div>
+      <div class="feature-card fade-up">
+        <h3>Student Weakness Insights</h3>
+        <p>Get detailed reports on where students need help the most.</p>
+      </div>
+      <div class="feature-card fade-up">
+        <h3>Track Student Growth</h3>
+        <p>See how students improve over time with visual progress tracking.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section id="how" class="how-it-works fade-up">
+    <h2 style="text-align:center;">How EduSmart Works</h2>
+    <p class="subtitle" style="text-align:center;">We simplify the learning journey for students and give teachers the tools to support them better.</p>
+    <div class="steps">
+      <div class="step fade-up">
+        <h4>Step 1: Assess</h4>
+        <p>Students take an initial test. EduSmart identifies their weak areas automatically.</p>
+      </div>
+      <div class="step fade-up">
+        <h4>Step 2: Recommend</h4>
+        <p>AI suggests personalized lessons & practice quizzes to improve problem areas.</p>
+      </div>
+      <div class="step fade-up">
+        <h4>Step 3: Track & Improve</h4>
+        <p>Teachers see detailed insights, conduct exams, and monitor student growth.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta fade-up">
+    <h2>Start Improving Learning Outcomes Today</h2>
+    <p>Empower students with personalized learning and help teachers focus on what matters most – real progress.</p>
+    <a href="/signup" class="btn-primary">Get Started for Free</a> <!-- ✅ Redirects to signup -->
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    © 2025 EduSmart. Personalized Learning for Everyone.
+  </footer>
+
+  <!-- ✅ SCRIPT ONLY FOR ANIMATIONS -->
+  <script>
+    // Fade-up animation observer
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if(entry.isIntersecting){
+          entry.target.classList.add('show');
+        }
+      });
+    }, { threshold: 0.2 });
+
+    document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+  </script>
+
+</body>
+</html>

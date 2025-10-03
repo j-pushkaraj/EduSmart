@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-6 py-12">
+
+    <!-- Class Info -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold mb-2">{{ class_obj.name }}</h1>
+        <p class="text-gray-600">{{ class_obj.description or "No description available." }}</p>
+    </div>
+
+    <!-- Chapters & Tests -->
+    <h2 class="text-2xl font-semibold mb-4">Chapters & Tests</h2>
+    {% for chapter in chapters %}
+    <div class="bg-white shadow rounded p-6 mb-6 hover:shadow-lg transition">
+        <h3 class="text-xl font-medium text-gray-800 mb-2">{{ chapter.name }}</h3>
+        <div class="space-y-3">
+            {% for test in chapter.tests %}
+            {% set attempt = attempts.get(test.id) %}
+            {% set now = current_time %}
+            <div class="border rounded p-3 hover:bg-gray-50">
+                <p class="font-medium">{{ test.name }}</p>
+                <p class="text-sm text-gray-500">
+                    {{ test.start_time.strftime('%d %b %Y %H:%M') }} –
+                    {{ (test.end_time or (test.start_time + timedelta(minutes=test.duration_minutes))).strftime('%d %b %Y %H:%M') }}
+                </p>
+
+                {% if attempt %}
+                    <p class="text-green-600 mt-1 font-medium">Status: Attempted</p>
+                    <p class="text-sm text-gray-700 mt-1">
+                        Correct: {{ attempt.correct_answers }} |
+                        Wrong: {{ attempt.wrong_answers }} |
+                        Total: {{ attempt.total_questions }} |
+                        Score: {{ "%.2f"|format((attempt.score / (attempt.total_questions or 1)) * 100) }}%
+                    </p>
+                    <a href="{{ url_for('student.review_test', attempt_id=attempt.id) }}"
+                       class="inline-block mt-2 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">
+                        Review
+                    </a>
+                {% else %}
+                    {% if now < test.start_time %}
+                        <p class="text-gray-500 mt-1">Status: Not Started</p>
+                        <a href="#" class="inline-block mt-2 px-3 py-1 bg-gray-400 text-white rounded text-sm cursor-not-allowed">Start Test</a>
+                    {% elif now > (test.end_time or (test.start_time + timedelta(minutes=test.duration_minutes))) %}
+                        <p class="text-red-600 mt-1 font-medium">Status: Missed</p>
+                    {% else %}
+                        <p class="text-blue-600 mt-1 font-medium">Status: Active</p>
+                        <a href="{{ url_for('student.start_test', test_id=test.id, question_index=0) }}"
+                           class="inline-block mt-2 px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm">
+                            Start Test
+                        </a>
+                    {% endif %}
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+
+    <!-- Assignments -->
+    <h2 class="text-2xl font-semibold mb-4">Assignments</h2>
+    {% for assignment in assignments %}
+    {% set submission = submissions.get(assignment.id) %}
+    <div class="bg-white shadow rounded p-6 mb-4 hover:shadow-lg transition">
+        <p class="font-medium">{{ assignment.title }}</p>
+        <p class="text-gray-500 text-sm mb-2">{{ assignment.description or "No description available." }}</p>
+        <p class="text-gray-500 text-sm">
+            Due: {{ assignment.due_date.strftime('%d %b %Y %H:%M') if assignment.due_date else "No deadline" }}
+        </p>
+
+        {% if submission %}
+            <p class="text-green-600 mt-1 font-medium">Status: Submitted</p>
+            <p class="text-sm text-gray-700 mt-1">
+                Score: {{ submission.score }} |
+                Feedback: {{ submission.feedback or "N/A" }}
+            </p>
+        {% else %}
+            {% if assignment.due_date and current_time > assignment.due_date %}
+                <p class="text-red-600 mt-1 font-medium">Status: Missed</p>
+            {% else %}
+                <p class="text-blue-600 mt-1 font-medium">Status: Pending</p>
+            {% endif %}
+        {% endif %}
+    </div>
+    {% endfor %}
+
+</div>
+{% endblock %}

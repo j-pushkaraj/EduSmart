@@ -1,0 +1,49 @@
+# -------------------
+# Python
+# -------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# Virtual Environment
+venv/
+
+# Environment Variables
+.env
+*.env
+.env.*
+
+# IDE / Editor settings
+.vscode/
+.idea/
+*.swp
+
+# Build / Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Logs / Databases
+*.log
+*.sqlite3
+*.db
+
+# Flask specific
+instance/
+# migrations are tracked, but ignore pycache inside
+migrations/**/__pycache__/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# OneDrive temp files
+~$*
+*.tmp

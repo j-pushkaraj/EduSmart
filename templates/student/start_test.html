@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>EduSmart — Online Test</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+
+  <style>
+    body { background: #f4f6fa; font-family: "Segoe UI", sans-serif; }
+    .exam-header { background: #0d6efd; color: #fff; padding: 12px 20px; display:flex; justify-content:space-between; align-items:center; font-weight:600; position:sticky; top:0; z-index:1000; }
+    #timer { background: #ffc107; color: #000; padding:5px 12px; border-radius:6px; font-weight:600; }
+
+    .question-box { background:#fff; padding:25px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.05); margin-bottom:20px; }
+    .question-text { font-size:1.2rem; margin-bottom:20px; }
+    .option { margin-bottom:12px; }
+    .option input { display:none; }
+    .option label { display:flex; align-items:center; padding:12px; border:2px solid #ddd; border-radius:8px; cursor:pointer; transition:0.2s; }
+    .option label:hover { border-color:#0d6efd; background:#f0f7ff; }
+    .option input:checked + label { border-color:#0d6efd; background:#e7f1ff; font-weight:600; }
+    .option span.badge { margin-right:10px; width:28px;height:28px;display:flex;align-items:center;justify-content:center; border-radius:50%; }
+
+    .footer-buttons { display:flex; gap:8px; flex-wrap:wrap; margin-top:15px; }
+    .footer-buttons button { border-radius:8px; padding:10px 18px; font-weight:600; }
+
+    .navigator-panel { background:#fff; padding:20px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.05); }
+    .q-btn { width:45px;height:45px;border-radius:50%;margin:4px;font-weight:600;border:none; cursor:pointer; transition:0.2s; }
+    .q-btn.current { box-shadow:0 0 8px #0d6efd; border:2px solid #0d6efd; }
+    .q-btn.answered { background:#28a745;color:#fff; }
+    .q-btn.review { background:#ffc107;color:#000; }
+    .q-btn.visited { background:#dc3545;color:#fff; }
+    .q-btn.not_visited { background:#6c757d;color:#fff; }
+
+    .legend-item { display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:0.9rem; }
+    .legend-dot { width:14px; height:14px; border-radius:50%; display:inline-block; }
+
+    .status-bar { background:#1a1a2e; color:#fff; padding:12px 24px; display:flex; justify-content:space-around; font-size:0.95rem; flex-wrap:wrap; }
+    .status { padding:6px 14px; border-radius:20px; font-weight:500; }
+    .status.answered { background:#28a745; }
+    .status.review { background:#ffc107;color:#000; }
+    .status.visited { background:#dc3545; }
+    .status.not_visited { background:#6c757d; }
+  </style>
+</head>
+<body>
+
+  <div class="exam-header">
+    <div>{{ test.name }}</div>
+    <div id="timer"><i class="bi bi-clock"></i> --:--:--</div>
+  </div>
+
+  <div class="container-fluid mt-3">
+    <div class="row">
+      <div class="col-lg-8">
+        <div class="question-box">
+          <div class="question-text">Q{{ current_index+1 }}. {{ current_question.text }}</div>
+          <form id="testForm">
+            {% for key, text in options.items() %}
+            <div class="option">
+              <input type="radio" id="opt{{ key }}" name="selected_option" value="{{ key }}" {% if student_answer and student_answer.selected_option==key %}checked{% endif %}>
+              <label for="opt{{ key }}"><span class="badge bg-primary">{{ key }}</span> {{ text }}</label>
+            </div>
+            {% endfor %}
+
+            <div class="footer-buttons">
+              <button type="button" id="prevBtn" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Previous</button>
+              <button type="button" id="nextBtn" class="btn btn-primary">Save & Next <i class="bi bi-arrow-right"></i></button>
+              <button type="button" id="markBtn" class="btn btn-warning"><i class="bi bi-flag"></i> Mark for Review</button>
+              <button type="button" id="clearBtn" class="btn btn-danger"><i class="bi bi-x-circle"></i> Clear Response</button>
+              <button type="button" id="submitBtn" class="btn btn-success"><i class="bi bi-check2-circle"></i> Submit Test</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="col-lg-4">
+        <div class="navigator-panel">
+          <h6 class="fw-bold mb-3">Question Navigator</h6>
+          <div class="d-flex flex-wrap" id="navigatorBtns">
+            {% for idx in range(total_questions) %}
+            <button class="q-btn {{ q_states[idx] }} {% if idx==current_index %}current{% endif %}" onclick="navigateTo({{ idx }})">{{ idx+1 }}</button>
+            {% endfor %}
+          </div>
+          <hr>
+          <h6 class="fw-bold">Legend</h6>
+          <div class="legend-item"><span class="legend-dot bg-success"></span> Answered</div>
+          <div class="legend-item"><span class="legend-dot bg-warning"></span> Marked for Review</div>
+          <div class="legend-item"><span class="legend-dot bg-danger"></span> Visited (Not Answered)</div>
+          <div class="legend-item"><span class="legend-dot bg-secondary"></span> Not Visited</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status-bar mt-3">
+    <div class="status answered" id="countAnswered">Answered: {{ q_states.values()|select("equalto","answered")|list|length }}</div>
+    <div class="status review" id="countReview">Marked for Review: {{ q_states.values()|select("equalto","review")|list|length }}</div>
+    <div class="status visited" id="countVisited">Visited (Not Answered): {{ q_states.values()|select("equalto","visited")|list|length }}</div>
+    <div class="status not_visited" id="countNotVisited">Not Visited: {{ q_states.values()|select("equalto","not_visited")|list|length }}</div>
+  </div>
+
+  <script>
+    let timeLeft = {{ remaining_seconds }};
+    function tick() {
+      if(timeLeft <= 0){ updateQuestion('submit'); return; }
+      let h = String(Math.floor(timeLeft/3600)).padStart(2,"0");
+      let m = String(Math.floor((timeLeft%3600)/60)).padStart(2,"0");
+      let s = String(timeLeft%60).padStart(2,"0");
+      document.getElementById("timer").innerHTML = `<i class="bi bi-clock"></i> ${h}:${m}:${s}`;
+      timeLeft--;
+    }
+    setInterval(tick,1000);
+    tick();
+
+    function getSelectedOption() {
+      return document.querySelector('input[name="selected_option"]:checked')?.value || null;
+    }
+
+    function updateQuestion(action){
+      const selectedOption = getSelectedOption();
+      fetch('{{ url_for("student.ajax_save_answer", test_id=test.id, question_index=current_index) }}', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({selected_option:selectedOption, action:action})
+      })
+      .then(res=>res.json())
+      .then(data=>{
+        if(data.submit){ window.location.href='{{ url_for("student.dashboard") }}'; return; }
+        document.querySelectorAll('.q-btn').forEach((btn, idx)=>{
+          btn.className = 'q-btn ' + data.q_states[idx];
+          if(idx==data.new_index) btn.classList.add('current');
+        });
+        document.getElementById('countAnswered').innerText = `Answered: ${data.counts.answered}`;
+        document.getElementById('countReview').innerText = `Marked for Review: ${data.counts.review}`;
+        document.getElementById('countVisited').innerText = `Visited (Not Answered): ${data.counts.visited}`;
+        document.getElementById('countNotVisited').innerText = `Not Visited: ${data.counts.not_visited}`;
+        if(action!=='submit' && action!=='mark' && action!=='clear'){
+          window.location.href='{{ url_for("student.start_test", test_id=test.id, question_index=0) }}'.replace('/0','/'+data.new_index);
+        }
+      });
+    }
+
+    document.getElementById('nextBtn').addEventListener('click', ()=>updateQuestion('next'));
+    document.getElementById('prevBtn').addEventListener('click', ()=>updateQuestion('prev'));
+    document.getElementById('markBtn').addEventListener('click', ()=>updateQuestion('mark'));
+    document.getElementById('clearBtn').addEventListener('click', ()=>{
+      document.querySelectorAll('input[name="selected_option"]').forEach(el=>el.checked=false);
+      updateQuestion('clear');
+    });
+    document.getElementById('submitBtn').addEventListener('click', ()=>updateQuestion('submit'));
+
+    function navigateTo(idx){
+      window.location.href='{{ url_for("student.start_test", test_id=test.id, question_index=0) }}'.replace('/0','/'+idx);
+    }
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

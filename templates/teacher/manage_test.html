@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Test - {{ test_obj.name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-6 py-8">
+    <h1 class="text-2xl font-bold text-gray-800 mb-4">
+        Manage Test: {{ test_obj.name }}
+    </h1>
+
+    <div class="bg-white p-4 rounded shadow mb-6 flex justify-between items-center">
+        <p class="text-gray-700">
+            <strong>Total Questions:</strong> {{ questions|length }} |
+            <strong>Total Marks:</strong> {{ current_total_marks }}/{{ test_obj.max_score }}
+        </p>
+        <a href="{{ url_for('teacher.view_class', class_id=test_obj.chapter.class_id) }}" 
+           class="text-sm text-blue-600 hover:underline">
+           ← Back to Class
+        </a>
+    </div>
+
+    <!-- Existing Questions Table -->
+    <div class="bg-white rounded shadow p-4 mb-6">
+        <h2 class="text-lg font-semibold mb-4">Questions</h2>
+
+        {% if questions %}
+        <table class="w-full border-collapse">
+            <thead>
+                <tr class="bg-gray-100 text-left text-sm">
+                    <th class="p-2 border">#</th>
+                    <th class="p-2 border">Question</th>
+                    <th class="p-2 border">Options</th>
+                    <th class="p-2 border">Correct</th>
+                    <th class="p-2 border">Marks</th>
+                    <th class="p-2 border">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for q in questions %}
+                <tr class="hover:bg-gray-50">
+                    <td class="p-2 border">{{ loop.index }}</td>
+                    <td class="p-2 border">{{ q.text }}</td>
+                    <td class="p-2 border text-sm">
+                        <div>A) {{ q.option_a }}</div>
+                        <div>B) {{ q.option_b }}</div>
+                        <div>C) {{ q.option_c }}</div>
+                        <div>D) {{ q.option_d }}</div>
+                    </td>
+                    <td class="p-2 border font-semibold text-green-700">{{ q.correct_option }}</td>
+                    <td class="p-2 border text-center">{{ q.marks or 1 }}</td>
+                    <td class="p-2 border text-center">
+                        <form method="POST" action="{{ url_for('teacher.delete_question', question_id=q.id) }}" 
+                              onsubmit="return confirm('Are you sure you want to delete this question?');">
+                            <button type="submit" class="text-red-600 hover:underline">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-gray-500">No questions added yet.</p>
+        {% endif %}
+    </div>
+
+    <!-- Add New Question -->
+    <div class="bg-white rounded shadow p-4 mb-6">
+        <h2 class="text-lg font-semibold mb-4">Add New Question</h2>
+        <form method="POST" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium">Question Text</label>
+                <textarea name="question_text" class="w-full border rounded p-2" required></textarea>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium">Option A</label>
+                    <input type="text" name="option_a" class="w-full border rounded p-2" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium">Option B</label>
+                    <input type="text" name="option_b" class="w-full border rounded p-2" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium">Option C</label>
+                    <input type="text" name="option_c" class="w-full border rounded p-2" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium">Option D</label>
+                    <input type="text" name="option_d" class="w-full border rounded p-2" required>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium">Correct Option</label>
+                <select name="correct_option" class="border rounded p-2" required>
+                    <option value="">-- Select --</option>
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="C">C</option>
+                    <option value="D">D</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium">Marks for this Question</label>
+                <input type="number" name="marks" min="1" class="w-32 border rounded p-2" required>
+            </div>
+
+            <button type="submit" 
+                class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                Add Question
+            </button>
+        </form>
+    </div>
+
+    <!-- Finish Button -->
+    <div class="text-center mt-6">
+        <a href="{{ url_for('teacher.view_class', class_id=test_obj.chapter.class_id) }}" 
+           class="bg-gray-700 text-white px-4 py-2 rounded hover:bg-gray-800">
+           Finish & Back to Class
+        </a>
+    </div>
+</div>
+{% endblock %}

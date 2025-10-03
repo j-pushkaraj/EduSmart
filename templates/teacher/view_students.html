@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Students - {{ class_obj.name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-6 py-10">
+    
+    <!-- ✅ Header -->
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">
+            Students Enrolled in {{ class_obj.name }}
+        </h1>
+
+        <a href="{{ url_for('teacher.view_class', class_id=class_obj.id) }}"
+           class="text-sm text-gray-700 hover:text-gray-900 border border-gray-300 rounded px-3 py-1.5">
+            ← Back to Class
+        </a>
+    </div>
+
+    {% if students %}
+        <div class="overflow-x-auto bg-white shadow rounded-lg border">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Student</th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Email</th>
+                        <th class="px-6 py-3 text-center text-sm font-semibold text-gray-700">Tests Attempted</th>
+                        <th class="px-6 py-3 text-center text-sm font-semibold text-gray-700">Average Score</th>
+                        <th class="px-6 py-3 text-center text-sm font-semibold text-gray-700">Performance</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for student in students %}
+                    <tr>
+                        <!-- ✅ Name -->
+                        <td class="px-6 py-4 text-sm font-medium text-gray-900">
+                            {{ student.name }}
+                        </td>
+
+                        <!-- ✅ Email -->
+                        <td class="px-6 py-4 text-sm text-gray-600">
+                            {{ student.email }}
+                        </td>
+
+                        <!-- ✅ Tests Attempted -->
+                        <td class="px-6 py-4 text-center text-sm text-gray-800">
+                            {{ student.test_attempts|length }}
+                        </td>
+
+                        <!-- ✅ Average Score -->
+                        <td class="px-6 py-4 text-center text-sm">
+                            {% if student.test_attempts %}
+                                {{ (student.test_attempts | map(attribute='score') | sum / student.test_attempts|length)|round(1) }}%
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+
+                        <!-- ✅ Future Weak/Strong Topics -->
+                        <td class="px-6 py-4 text-center text-sm">
+                            <span class="text-gray-500 italic">Coming Soon</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="bg-white p-6 text-center rounded-lg border shadow">
+            <p class="text-gray-500">
+                No students have joined this class yet.
+            </p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

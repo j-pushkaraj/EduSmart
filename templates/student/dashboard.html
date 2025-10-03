@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-6 py-12 relative">
+  
+  <!-- Welcome message -->
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+    <div>
+      <h2 class="text-2xl font-semibold text-gray-700">
+        Welcome, {{ current_user.name }} 👋
+      </h2>
+      <p class="text-gray-500 mt-1">Let’s continue your learning journey today 🚀</p>
+    </div>
+    
+    <!-- Join Class Button (opens modal) -->
+    <button onclick="document.getElementById('joinModal').classList.remove('hidden')"
+       class="bg-blue-600 text-white px-5 py-2 rounded-lg shadow hover:bg-blue-700 transition font-medium flex items-center">
+      <span class="text-lg mr-2">+</span> Join Class
+    </button>
+  </div>
+
+  <h1 class="text-3xl font-bold text-gray-800 mb-6">Your Classes</h1>
+
+  {% if classes and classes|length > 0 %}
+  <div class="grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    {% for cls in classes %}
+    <div class="bg-white shadow-md rounded-xl p-6 hover:shadow-2xl transition duration-300 flex flex-col justify-between border border-gray-100">
+      <div class="mb-4">
+        <h2 class="text-xl font-semibold text-gray-800">{{ cls.name }}</h2>
+        <p class="text-gray-500 text-sm mt-1">Created by: 
+          <span class="font-medium">
+            {{ cls.teacher.name if cls.teacher else "Unknown" }}
+          </span>
+        </p>
+      </div>
+      <a href="{{ url_for('student.class_detail', class_id=cls.id) }}" 
+         class="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold text-center hover:bg-blue-700 transition">
+        Go →
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+    <div class="text-center mt-16">
+      <img src="https://cdn-icons-png.flaticon.com/512/4072/4072581.png" alt="No classes"
+           class="mx-auto w-28 mb-6 opacity-90">
+      <p class="text-gray-600 text-lg">You have not joined any classes yet.</p>
+    </div>
+  {% endif %}
+
+</div>
+
+<!-- Join Class Modal -->
+<div id="joinModal" class="hidden fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center z-50">
+  <div class="bg-white rounded-xl shadow-lg w-full max-w-md p-6 relative">
+    <h2 class="text-xl font-bold text-gray-800 mb-4">Join a Class</h2>
+    <form action="{{ url_for('student.join_class') }}" method="POST">
+      <label for="join_code" class="block text-gray-600 font-medium mb-2">Enter Class Code</label>
+      <input type="text" name="join_code" id="join_code" required
+             class="w-full border rounded-lg px-4 py-2 mb-4 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+      
+      <div class="flex justify-end gap-3">
+        <button type="button" 
+                onclick="document.getElementById('joinModal').classList.add('hidden')"
+                class="px-4 py-2 rounded-lg border text-gray-600 hover:bg-gray-100 transition">
+          Cancel
+        </button>
+        <button type="submit" 
+                class="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition">
+          Join
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  // Close modal when clicking outside
+  const joinModal = document.getElementById('joinModal');
+  window.addEventListener('click', (e) => {
+    if (e.target === joinModal) {
+      joinModal.classList.add('hidden');
+    }
+  });
+</script>
+{% endblock %}
