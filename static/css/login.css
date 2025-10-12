@@ -1,16 +1,73 @@
 /* Import Inter font */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
+:root {
+  --primary: #3492F8;       
+  --secondary: #6ee7b7;     
+  --background: #FFFFFF;    
+  --text-dark: #000000;    
+  --text-muted: #515151;    
+  --accent-light: #96D6FF;  
+  --accent-soft: #DAF0FF;   
+  --card-bg: #E7F0F7;    
+  --accent: #6ee7b7;
+  
+  /* Brand Gradient Colors */
+  --brand-dark: #3e0d9a;    /* Deep Violet */
+  --brand-light: #936bdd;   /* Lavender Purple */
+}
+
 /* Global styling */
 body {
   font-family: 'Inter', sans-serif;
-  background-color: #f9f9f9;
+  background-color: #c6eff6;
   color: #1a202c;
   margin: 0;
   padding: 0;
 }
 
-/* Container styling */
+/* ===== Navbar Styling ===== */
+.navbar {
+  background: linear-gradient(90deg, var(--brand-dark), var(--brand-light));
+  padding: 12px 24px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.navbar-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.navbar-logo {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.navbar-logo img {
+  height: 40px;
+  margin-right: 10px;
+}
+
+.navbar-links a {
+  color: #fff;
+  text-decoration: none;
+  margin-left: 20px;
+  font-weight: 500;
+  transition: color 0.3s ease;
+}
+
+.navbar-links a:hover {
+  color: var(--accent);
+}
+
+/* ===== Container styling ===== */
 .container {
   max-width: 480px;
   margin: 80px auto;
@@ -25,7 +82,7 @@ body {
 .container h2 {
   text-align: center;
   font-size: 28px;
-  color: #2563eb; /* Tailwind green-500 */
+  color: #2563eb;
   margin-bottom: 24px;
 }
 
@@ -58,21 +115,25 @@ body {
 
 /* Primary button */
 .btn-primary {
-  background-color: #2563eb;
+  background: linear-gradient(90deg, var(--brand-dark), var(--brand-light));
   color: white;
-  padding: 12px 18px;
+  padding: 14px 20px;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 15px;
   cursor: pointer;
-  transition: background-color 0.3s ease;
+  transition: all 0.3s ease;
   text-decoration: none;
-  width: 26rem;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 4px 10px rgba(100, 45, 204, 0.25);
 }
 
 .btn-primary:hover {
-  background-color: #1a3f8e;;
+  background: linear-gradient(85deg, var(--accent), var(--accent-light));
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(135, 81, 235, 0.35);
 }
 
 /* Link button */

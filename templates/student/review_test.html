@@ -5,7 +5,8 @@
     <h1 class="text-2xl font-bold mb-4">Review: {{ test.name }}</h1>
     <p class="text-gray-600 mb-6">Attempted on: {{ attempt.attempted_at.strftime('%d %b %Y %H:%M') }}</p>
 
-    <div class="grid gap-6">
+    <!-- Question Review -->
+    <div class="grid gap-6 mb-10">
         {% for answer, question in answers %}
         <div class="border p-4 rounded-lg bg-white shadow">
             <p class="font-medium">{{ loop.index }}. {{ question.text }}</p>
@@ -31,5 +32,43 @@
         </div>
         {% endfor %}
     </div>
+
+    <!-- Weak Topics & Resources -->
+    {% if weak_topics %}
+    <h2 class="text-xl font-bold mb-4">Areas to Improve</h2>
+    <div class="grid gap-6">
+        {% for wt in weak_topics %}
+        <div class="border p-4 rounded-lg bg-yellow-50 shadow">
+            <h3 class="font-semibold mb-2">Topic: {{ wt.topic.name }}</h3>
+            <p class="mb-2"><strong>Related Question:</strong> {{ wt.question.text }}</p>
+            <p class="mb-2"><strong>Improvement Score:</strong> {{ wt.improvement_score }}%</p>
+
+            <!-- Recommended Videos -->
+            {% if wt.videos %}
+            <div class="mb-2">
+                <h4 class="font-medium">Recommended Videos:</h4>
+                <ul class="list-disc list-inside">
+                    {% for video in wt.videos %}
+                    <li><a href="{{ video.video_url }}" target="_blank" class="text-blue-600 hover:underline">{{ video.video_title }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            <!-- Follow-up Assignments -->
+            {% if wt.followups %}
+            <div>
+                <h4 class="font-medium">Follow-up Assignments:</h4>
+                <ul class="list-disc list-inside">
+                    {% for fup in wt.followups %}
+                    <li>{{ fup.question_text }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

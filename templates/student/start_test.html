@@ -43,6 +43,10 @@
     .status.review { background:#ffc107;color:#000; }
     .status.visited { background:#dc3545; }
     .status.not_visited { background:#6c757d; }
+
+    /* Proctoring warning */
+    #warningMsg { display:none; color:#fff; background:#dc3545; padding:10px 15px; border-radius:8px; font-weight:600; margin-bottom:10px; }
+    #webcam { display:block; width:200px; height:150px; border:2px solid #0d6efd; border-radius:8px; margin-top:10px; }
   </style>
 </head>
 <body>
@@ -56,6 +60,7 @@
     <div class="row">
       <div class="col-lg-8">
         <div class="question-box">
+          <div id="warningMsg"></div>
           <div class="question-text">Q{{ current_index+1 }}. {{ current_question.text }}</div>
           <form id="testForm">
             {% for key, text in options.items() %}
@@ -73,6 +78,9 @@
               <button type="button" id="submitBtn" class="btn btn-success"><i class="bi bi-check2-circle"></i> Submit Test</button>
             </div>
           </form>
+
+          <!-- Hidden webcam for proctoring -->
+          <video id="webcam" autoplay muted></video>
         </div>
       </div>
 
@@ -103,6 +111,7 @@
   </div>
 
   <script>
+    // Timer
     let timeLeft = {{ remaining_seconds }};
     function tick() {
       if(timeLeft <= 0){ updateQuestion('submit'); return; }
@@ -119,28 +128,26 @@
       return document.querySelector('input[name="selected_option"]:checked')?.value || null;
     }
 
-    function updateQuestion(action){
+    async function updateQuestion(action){
       const selectedOption = getSelectedOption();
-      fetch('{{ url_for("student.ajax_save_answer", test_id=test.id, question_index=current_index) }}', {
+      const res = await fetch('{{ url_for("student.ajax_save_answer", test_id=test.id, question_index=current_index) }}', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify({selected_option:selectedOption, action:action})
-      })
-      .then(res=>res.json())
-      .then(data=>{
-        if(data.submit){ window.location.href='{{ url_for("student.dashboard") }}'; return; }
-        document.querySelectorAll('.q-btn').forEach((btn, idx)=>{
-          btn.className = 'q-btn ' + data.q_states[idx];
-          if(idx==data.new_index) btn.classList.add('current');
-        });
-        document.getElementById('countAnswered').innerText = `Answered: ${data.counts.answered}`;
-        document.getElementById('countReview').innerText = `Marked for Review: ${data.counts.review}`;
-        document.getElementById('countVisited').innerText = `Visited (Not Answered): ${data.counts.visited}`;
-        document.getElementById('countNotVisited').innerText = `Not Visited: ${data.counts.not_visited}`;
-        if(action!=='submit' && action!=='mark' && action!=='clear'){
-          window.location.href='{{ url_for("student.start_test", test_id=test.id, question_index=0) }}'.replace('/0','/'+data.new_index);
-        }
       });
+      const data = await res.json();
+      if(data.submit){ window.location.href='{{ url_for("student.dashboard") }}'; return; }
+      document.querySelectorAll('.q-btn').forEach((btn, idx)=>{
+        btn.className = 'q-btn ' + data.q_states[idx];
+        if(idx==data.new_index) btn.classList.add('current');
+      });
+      document.getElementById('countAnswered').innerText = `Answered: ${data.counts.answered}`;
+      document.getElementById('countReview').innerText = `Marked for Review: ${data.counts.review}`;
+      document.getElementById('countVisited').innerText = `Visited (Not Answered): ${data.counts.visited}`;
+      document.getElementById('countNotVisited').innerText = `Not Visited: ${data.counts.not_visited}`;
+      if(action!=='submit' && action!=='mark' && action!=='clear'){
+        window.location.href='{{ url_for("student.start_test", test_id=test.id, question_index=0) }}'.replace('/0','/'+data.new_index);
+      }
     }
 
     document.getElementById('nextBtn').addEventListener('click', ()=>updateQuestion('next'));
@@ -151,10 +158,64 @@
       updateQuestion('clear');
     });
     document.getElementById('submitBtn').addEventListener('click', ()=>updateQuestion('submit'));
-
     function navigateTo(idx){
       window.location.href='{{ url_for("student.start_test", test_id=test.id, question_index=0) }}'.replace('/0','/'+idx);
     }
+
+    // =======================
+    // Continuous Live Proctoring
+    // =======================
+    const video = document.getElementById('webcam');
+    let lastFrameTime = 0;
+
+    async function startWebcam() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video:true, audio:false });
+        video.srcObject = stream;
+        video.style.display = "block"; // make it visible
+      } catch(e) {
+        console.error("Webcam access denied", e);
+        alert("⚠️ Webcam access is required for test proctoring!");
+      }
+    }
+
+    async function sendFrameContinuously() {
+      const now = Date.now();
+      if(now - lastFrameTime < 1500){ requestAnimationFrame(sendFrameContinuously); return; }
+      lastFrameTime = now;
+
+      if(video.readyState < 2){ requestAnimationFrame(sendFrameContinuously); return; }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+      const frame = canvas.toDataURL('image/jpeg');
+
+      try {
+        const response = await fetch('{{ url_for("student.analyze_frame") }}', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({attempt_id: {{ attempt.id }}, frame: frame})
+        });
+        const data = await response.json();
+        const msgBox = document.getElementById('warningMsg');
+        if(data.msg){
+          msgBox.innerText = data.msg;
+          msgBox.style.display = 'block';
+        } else {
+          msgBox.style.display = 'none';
+        }
+        if(data.auto_submit){
+          updateQuestion('submit');
+          return;
+        }
+      } catch(err){ console.error(err); }
+
+      requestAnimationFrame(sendFrameContinuously);
+    }
+
+    startWebcam().then(() => requestAnimationFrame(sendFrameContinuously));
   </script>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>

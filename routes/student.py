@@ -1,13 +1,15 @@
-from flask import Blueprint, render_template, request, redirect, flash, url_for
+from flask import Blueprint, render_template, request, redirect, flash, url_for, session, jsonify
 from flask_login import current_user, login_required
-from models import db, Class, StudentClass, Test, Question, TestAttempt, StudentAnswer, AssignmentSubmission
-
+from models import db, Class, StudentClass, Test, Question, TestAttempt, StudentAnswer, AssignmentSubmission, ProctoringLog
 from datetime import datetime, timedelta
-from flask import jsonify
-
+import base64
+import cv2
+import numpy as np
+import mediapipe as mp
+from ultralytics import YOLO
+import time
 
 student_bp = Blueprint("student", __name__, url_prefix="/student")
-
 
 # ==============================
 # DASHBOARD
@@ -27,13 +29,14 @@ def dashboard():
 
     for cls in enrolled_classes:
         class_tests_status[cls.id] = []
+
         for chapter in cls.chapters:
             for test in chapter.tests:
                 attempt = TestAttempt.query.filter_by(
                     student_id=current_user.id, test_id=test.id
                 ).first()
 
-                # ✅ Safe test status check
+                # Determine test status
                 if test.start_time <= now <= (
                     test.end_time or (test.start_time + timedelta(minutes=(test.duration_minutes or 0)))
                 ):
@@ -52,16 +55,14 @@ def dashboard():
                 else:
                     correct = wrong = total_questions = score = 0
 
-                class_tests_status[cls.id].append(
-                    {
-                        "test": test,
-                        "status": status,
-                        "correct": correct,
-                        "wrong": wrong,
-                        "total": total_questions,
-                        "score": score,
-                    }
-                )
+                class_tests_status[cls.id].append({
+                    "test": test,
+                    "status": status,
+                    "correct": correct,
+                    "wrong": wrong,
+                    "total": total_questions,
+                    "score": score,
+                })
 
     return render_template(
         "student/dashboard.html",
@@ -97,6 +98,7 @@ def join_class():
 
     return redirect(url_for("student.dashboard"))
 
+
 # ==============================
 # CLASS DETAIL ROUTE
 # ==============================
@@ -105,7 +107,7 @@ def join_class():
 def class_detail(class_id):
     class_obj = Class.query.get_or_404(class_id)
 
-    # Check if enrolled
+    # Check enrollment
     is_enrolled = StudentClass.query.filter_by(student_id=current_user.id, class_id=class_id).first()
     if not is_enrolled:
         flash("You are not enrolled in this class", "danger")
@@ -137,22 +139,21 @@ def class_detail(class_id):
     )
 
 
-
+# ==============================
+# START TEST
+# ==============================
 @student_bp.route("/start_test/<int:test_id>/<int:question_index>", methods=["GET", "POST"])
 @login_required
 def start_test(test_id, question_index=0):
     test = Test.query.get_or_404(test_id)
-
-    # Check enrollment
     class_id = test.chapter.class_id
     enrolled = StudentClass.query.filter_by(student_id=current_user.id, class_id=class_id).first()
+
     if not enrolled:
         flash("You are not enrolled in this class", "danger")
         return redirect(url_for("student.dashboard"))
 
     now = datetime.now()
-
-    # Ensure test is active
     if test.start_time and now < test.start_time:
         flash("⏰ Test has not started yet!", "warning")
         return redirect(url_for("student.dashboard"))
@@ -193,13 +194,12 @@ def start_test(test_id, question_index=0):
     if total_questions == 0:
         flash("No questions available for this test!", "info")
         return redirect(url_for("student.class_detail", class_id=class_id))
+
     if question_index < 0 or question_index >= total_questions:
         return redirect(url_for("student.start_test", test_id=test_id, question_index=0))
 
     current_question = questions[question_index]
-
     student_answer = StudentAnswer.query.filter_by(attempt_id=attempt.id, question_id=current_question.id).first()
-
     options = {
         "A": current_question.option_a,
         "B": current_question.option_b,
@@ -265,17 +265,21 @@ def start_test(test_id, question_index=0):
         student_answer=student_answer,
         q_states=q_states,
         remaining_seconds=remaining_seconds,
-        options=options
+        options=options,
+        attempt=attempt
     )
 
 
+# ==============================
+# AJAX SAVE ANSWER
+# ==============================
 @student_bp.route("/ajax_save_answer/<int:test_id>/<int:question_index>", methods=["POST"])
 @login_required
 def ajax_save_answer(test_id, question_index):
     data = request.get_json()
     action = data.get("action")
     selected_option = data.get("selected_option")
-    
+
     test = Test.query.get_or_404(test_id)
     attempt = TestAttempt.query.filter_by(student_id=current_user.id, test_id=test.id).first()
     if not attempt:
@@ -286,7 +290,6 @@ def ajax_save_answer(test_id, question_index):
         return jsonify({"error": "Invalid question index"}), 400
 
     current_question = questions[question_index]
-    
     student_answer = StudentAnswer.query.filter_by(attempt_id=attempt.id, question_id=current_question.id).first()
     if not student_answer:
         student_answer = StudentAnswer(attempt_id=attempt.id, question_id=current_question.id)
@@ -303,14 +306,14 @@ def ajax_save_answer(test_id, question_index):
         if selected_option:
             student_answer.selected_option = selected_option
             student_answer.is_correct = (selected_option == current_question.correct_option)
-        if action == "submit":
-            # Finalize attempt
-            attempt.correct_answers = StudentAnswer.query.filter_by(attempt_id=attempt.id, is_correct=True).count()
-            attempt.wrong_answers = StudentAnswer.query.filter_by(attempt_id=attempt.id, is_correct=False).count()
-            attempt.total_questions = len(questions)
-            attempt.score = attempt.correct_answers
-            db.session.commit()
-            return jsonify({"submit": True})
+
+    if action == "submit":
+        attempt.correct_answers = StudentAnswer.query.filter_by(attempt_id=attempt.id, is_correct=True).count()
+        attempt.wrong_answers = StudentAnswer.query.filter_by(attempt_id=attempt.id, is_correct=False).count()
+        attempt.total_questions = len(questions)
+        attempt.score = attempt.correct_answers
+        db.session.commit()
+        return jsonify({"submit": True})
 
     db.session.commit()
 
@@ -341,23 +344,16 @@ def ajax_save_answer(test_id, question_index):
     elif action == "prev" and question_index > 0:
         new_index -= 1
 
-    return jsonify({
-        "q_states": q_states,
-        "counts": counts,
-        "new_index": new_index
-    })
+    return jsonify({"q_states": q_states, "counts": counts, "new_index": new_index})
 
 
 # ==============================
-# REVIEW TEST (After Attempt)
+# REVIEW TEST
 # ==============================
 @student_bp.route("/review_test/<int:attempt_id>")
 @login_required
 def review_test(attempt_id):
-    attempt = TestAttempt.query.filter_by(
-        id=attempt_id, student_id=current_user.id
-    ).first_or_404()
-
+    attempt = TestAttempt.query.filter_by(id=attempt_id, student_id=current_user.id).first_or_404()
     test = attempt.test
     answers = (
         StudentAnswer.query.filter_by(attempt_id=attempt.id)
@@ -365,10 +361,141 @@ def review_test(attempt_id):
         .add_entity(Question)
         .all()
     )
+    return render_template("student/review_test.html", attempt=attempt, test=test, answers=answers)
 
-    return render_template(
-        "student/review_test.html",
-        attempt=attempt,
-        test=test,
-        answers=answers
-    )
+
+# ==============================
+# PROCTORING: YOLO + Mediapipe
+# ==============================
+yolo_model = None
+face_mesh = None
+
+def get_yolo_model():
+    global yolo_model
+    if yolo_model is None:
+        yolo_model = YOLO("yolov8n.pt")
+    return yolo_model
+
+def get_face_mesh():
+    global face_mesh
+    if face_mesh is None:
+        mp_face_mesh = mp.solutions.face_mesh
+        face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, min_detection_confidence=0.5)
+    return face_mesh
+
+scenario_msgs = {
+    "No face detected": "🚨 Hey! We can’t see you on camera. Please sit in front of it.",
+    "Multiple people detected": "⚠️ Someone else is nearby. Make sure you’re alone for the test.",
+    "Mobile phone detected": "📵 Mobile phone detected! Keep it away during the test.",
+    "Eye gaze away": "👀 Looks like your eyes are off the screen. Focus on the test window.",
+    "Window switched": "🖥️ You switched tabs! Stay on the test page to continue safely."
+}
+
+def check_eye_gaze(landmarks):
+    left_eye = np.mean([[landmarks[i].x, landmarks[i].y] for i in [33, 133, 159, 145]], axis=0)
+    right_eye = np.mean([[landmarks[i].x, landmarks[i].y] for i in [263, 362, 386, 374]], axis=0)
+    eye_center_x = (left_eye[0] + right_eye[0]) / 2
+    eye_center_y = (left_eye[1] + right_eye[1]) / 2
+    return not (0.35 < eye_center_x < 0.65 and 0.35 < eye_center_y < 0.65)
+
+
+@student_bp.route("/analyze_frame", methods=["POST"])
+@login_required
+def analyze_frame():
+    data = request.get_json()
+    attempt_id = data.get("attempt_id")
+    frame_data = data.get("frame")
+
+    if not frame_data:
+        return jsonify({"error": "No frame received"}), 400
+
+    # Decode frame
+    try:
+        frame_data = frame_data.strip()
+        img_bytes = base64.b64decode(frame_data.split(",")[1])
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    except Exception as e:
+        return jsonify({"error": f"Frame decode failed: {str(e)}"}), 500
+
+    # YOLO detection
+    try:
+        yolo_model = get_yolo_model()
+        results = yolo_model(frame, verbose=False)[0]
+        detected_objects = [yolo_model.names[int(box.cls)].lower() for box in results.boxes]
+        confidences = [float(box.conf) for box in results.boxes]
+    except Exception as e:
+        return jsonify({"error": f"YOLO detection failed: {str(e)}"}), 500
+
+    face_detected = "person" in detected_objects
+    multiple_faces = detected_objects.count("person") > 1
+    mobile_detected = any(obj in ["cell phone", "mobile"] and conf > 0.3 for obj, conf in zip(detected_objects, confidences))
+
+    # Eye gaze detection
+    eye_gaze_away = False
+    try:
+        face_mesh_model = get_face_mesh()
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results_face = face_mesh_model.process(rgb_frame)
+        if results_face.multi_face_landmarks:
+            landmarks = results_face.multi_face_landmarks[0].landmark
+            eye_gaze_away = check_eye_gaze(landmarks)
+        else:
+            face_detected = False
+    except Exception as e:
+        print(f"[Eye gaze error] {e}")
+        eye_gaze_away = False
+
+    # Determine suspicious activity
+    suspicious = None
+    if not face_detected:
+        suspicious = "No face detected"
+    elif multiple_faces:
+        suspicious = "Multiple people detected"
+    elif mobile_detected:
+        suspicious = "Mobile phone detected"
+    elif eye_gaze_away:
+        suspicious = "Eye gaze away"
+
+    # Log to DB
+    try:
+        log = ProctoringLog(
+            attempt_id=attempt_id,
+            face_detected=face_detected,
+            multiple_faces=multiple_faces,
+            mobile_detected=mobile_detected,
+            eye_gaze_away=eye_gaze_away,
+            suspicious_activity=suspicious,
+            timestamp=datetime.utcnow()
+        )
+        db.session.add(log)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"DB logging failed: {str(e)}"}), 500
+
+    # Manage warnings
+    warn_key = f"warnings_{current_user.id}_{attempt_id}"
+    last_warn_key = f"last_warn_{current_user.id}_{attempt_id}"
+    now_ts = time.time()
+    session[warn_key] = session.get(warn_key, 0)
+    last_warn_time = session.get(last_warn_key, 0)
+
+    if suspicious and (now_ts - last_warn_time > 2):  # Debounce
+        session[warn_key] += 1
+        session[last_warn_key] = now_ts
+
+    auto_submit = False
+    if session.get(warn_key, 0) >= 5:
+        auto_submit = True
+        session[warn_key] = 0
+        session[last_warn_key] = 0
+
+    msg = scenario_msgs.get(suspicious) if suspicious else None
+
+    return jsonify({
+        "suspicious": suspicious,
+        "msg": msg,
+        "warnings": session.get(warn_key, 0),
+        "auto_submit": auto_submit
+    })

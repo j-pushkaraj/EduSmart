@@ -19,6 +19,7 @@ class User(db.Model, UserMixin):
     test_attempts = db.relationship("TestAttempt", backref="student", lazy=True)
     assignment_submissions = db.relationship("AssignmentSubmission", backref="student", lazy=True)
     enrolled_classes = db.relationship("StudentClass", back_populates="student", lazy=True)
+    followup_assignments = db.relationship("FollowupAssignment", backref="student", lazy=True)
 
     def __repr__(self):
         return f"<User {self.name} ({self.role})>"
@@ -118,8 +119,6 @@ class TestAttempt(db.Model):
 
     score = db.Column(db.Float, default=0.0)
     attempted_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    # ✅ New field for per-student exam deadline
     end_time = db.Column(db.DateTime, nullable=True)
 
     total_questions = db.Column(db.Integer, default=0)
@@ -127,7 +126,8 @@ class TestAttempt(db.Model):
     wrong_answers = db.Column(db.Integer, default=0)
     time_taken = db.Column(db.Integer, default=0)
 
-    topic_performance = db.Column(db.JSON, nullable=True)  # dict is fine
+    topic_performance = db.Column(db.JSON, nullable=True)
+    auto_submitted_due_to_violation = db.Column(db.Boolean, default=False)
 
     answers = db.relationship("StudentAnswer", backref="attempt", lazy=True, cascade="all, delete-orphan")
 
@@ -148,7 +148,7 @@ class StudentAnswer(db.Model):
     selected_option = db.Column(db.String(1), nullable=True)
     is_correct = db.Column(db.Boolean, default=False)
     time_spent = db.Column(db.Integer, default=0)
-    marked_for_review = db.Column(db.Boolean, default=False)  # added field
+    marked_for_review = db.Column(db.Boolean, default=False)
 
     def __repr__(self):
         return f"<StudentAnswer question={self.question_id} correct={self.is_correct}>"
@@ -173,6 +173,9 @@ class Question(db.Model):
 
     topic = db.Column(db.String(100), nullable=True)
     difficulty = db.Column(db.String(20), nullable=True)
+
+    # Relationship with AI-identified topic
+    ai_topic = db.relationship("Topic", backref="question", uselist=False)
 
     def __repr__(self):
         return f"<Question {self.text[:20]}...>"
@@ -213,7 +216,7 @@ class AssignmentSubmission(db.Model):
 
 
 # ==========================
-# ✅ STUDENT ANALYTICS
+# ✅ STUDENT ANALYTICS (UPDATED)
 # ==========================
 class StudentAnalytics(db.Model):
     __tablename__ = "student_analytics"
@@ -225,9 +228,134 @@ class StudentAnalytics(db.Model):
     overall_score = db.Column(db.Float, default=0.0)
     weak_topics = db.Column(db.JSON, nullable=True)
     strong_topics = db.Column(db.JSON, nullable=True)
+    predicted_weak_topics = db.Column(db.JSON, nullable=True)  # NEW FIELD
     history = db.Column(db.JSON, nullable=True)
 
     last_updated = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __repr__(self):
         return f"<Analytics student={self.student_id} class={self.class_id}>"
+
+
+# ==========================
+# ✅ AI PROCTORING LOGS
+# ==========================
+class ProctoringLog(db.Model):
+    __tablename__ = "proctoring_log"
+
+    id = db.Column(db.Integer, primary_key=True)
+    attempt_id = db.Column(db.Integer, db.ForeignKey("test_attempt.id"), nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+    face_detected = db.Column(db.Boolean, default=True)
+    multiple_faces = db.Column(db.Boolean, default=False)
+    mobile_detected = db.Column(db.Boolean, default=False)
+    window_switch_detected = db.Column(db.Boolean, default=False)
+    eye_gaze_away = db.Column(db.Boolean, default=False)
+
+    suspicious_activity = db.Column(db.String(255), nullable=True)
+    warning_level = db.Column(db.Integer, default=0)
+    system_message = db.Column(db.String(255), nullable=True)
+    auto_submitted = db.Column(db.Boolean, default=False)
+
+    attempt = db.relationship("TestAttempt", backref="proctoring_logs")
+    def __repr__(self):
+        return f"<ProctoringLog attempt={self.attempt_id} warnings={self.warning_level}>"
+
+
+# ==========================
+# ✅ STRESS DETECTION LOGS
+# ==========================
+class StressLog(db.Model):
+    __tablename__ = "stress_log"
+
+    id = db.Column(db.Integer, primary_key=True)
+    attempt_id = db.Column(db.Integer, db.ForeignKey("test_attempt.id"), nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+    detected_emotion = db.Column(db.String(50))
+    confidence = db.Column(db.Float, default=0.0)
+
+    attempt = db.relationship("TestAttempt", backref="stress_logs")
+
+    def __repr__(self):
+        return f"<StressLog attempt={self.attempt_id} emotion={self.detected_emotion}>"
+
+
+# ==========================
+# ✅ PROCTORING SUMMARY
+# ==========================
+class ProctoringSummary(db.Model):
+    __tablename__ = "proctoring_summary"
+
+    id = db.Column(db.Integer, primary_key=True)
+    attempt_id = db.Column(db.Integer, db.ForeignKey("test_attempt.id"), nullable=False)
+    total_warnings = db.Column(db.Integer, default=0)
+    total_faces_detected = db.Column(db.Integer, default=0)
+    total_mobile_detections = db.Column(db.Integer, default=0)
+    total_window_shifts = db.Column(db.Integer, default=0)
+    last_action = db.Column(db.String(255), nullable=True)
+
+    attempt = db.relationship("TestAttempt", backref="proctoring_summary", uselist=False)
+
+    def __repr__(self):
+        return f"<ProctoringSummary attempt={self.attempt_id} warnings={self.total_warnings}>"
+
+
+# ==========================
+# ✅ GEMINI + YOUTUBE MODELS
+# ==========================
+class Topic(db.Model):
+    __tablename__ = "topic"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), nullable=False)
+    subject = db.Column(db.String(100), nullable=True)
+    chapter = db.Column(db.String(100), nullable=True)
+    subtopic = db.Column(db.String(100), nullable=True)
+    confidence_score = db.Column(db.Float, default=0.0)
+
+    question_id = db.Column(db.Integer, db.ForeignKey("question.id"), nullable=True)
+
+    # Relationships
+    followup_assignments = db.relationship("FollowupAssignment", backref="topic", lazy=True, cascade="all, delete-orphan")
+    recommended_videos = db.relationship("RecommendedVideo", backref="topic", lazy=True, cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Topic {self.name}>"
+
+
+class FollowupAssignment(db.Model):
+    __tablename__ = "followup_assignment"
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    topic_id = db.Column(db.Integer, db.ForeignKey("topic.id"), nullable=False)
+
+    question_text = db.Column(db.Text, nullable=False)
+    options = db.Column(db.JSON, nullable=False)
+    correct_answer = db.Column(db.String(1), nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_attempted = db.Column(db.Boolean, default=False)
+    is_correct = db.Column(db.Boolean, default=False)
+
+    def __repr__(self):
+        return f"<FollowupAssignment student={self.student_id} topic={self.topic_id}>"
+
+
+class RecommendedVideo(db.Model):
+    __tablename__ = "recommended_video"
+
+    id = db.Column(db.Integer, primary_key=True)
+    topic_id = db.Column(db.Integer, db.ForeignKey("topic.id"), nullable=False)
+
+    video_title = db.Column(db.String(255), nullable=False)
+    video_url = db.Column(db.String(255), nullable=False)
+    channel_name = db.Column(db.String(150), nullable=True)
+    views = db.Column(db.Integer, default=0)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<RecommendedVideo topic={self.topic_id} title={self.video_title[:20]}>"
