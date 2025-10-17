@@ -128,15 +128,20 @@ class TestAttempt(db.Model):
 
     topic_performance = db.Column(db.JSON, nullable=True)
     auto_submitted_due_to_violation = db.Column(db.Boolean, default=False)
+    reviewed = db.Column(db.Boolean, default=False)
+    review_completed_at = db.Column(db.DateTime, nullable=True)
+    followup_score = db.Column(db.Float, default=None)
+    followup_attempted = db.Column(db.Boolean, default=False)
 
     answers = db.relationship("StudentAnswer", backref="attempt", lazy=True, cascade="all, delete-orphan")
+    followup_assignments = db.relationship("FollowupAssignment", backref="attempt", lazy=True, cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Attempt student={self.student_id} test={self.test_id} score={self.score}>"
 
 
 # ==========================
-# ✅ PER-QUESTION STUDENT ANSWERS
+# ✅ STUDENT ANSWERS
 # ==========================
 class StudentAnswer(db.Model):
     __tablename__ = "student_answer"
@@ -149,36 +154,38 @@ class StudentAnswer(db.Model):
     is_correct = db.Column(db.Boolean, default=False)
     time_spent = db.Column(db.Integer, default=0)
     marked_for_review = db.Column(db.Boolean, default=False)
+    
+    question = db.relationship("Question", backref="student_answers", lazy=True)
+
 
     def __repr__(self):
         return f"<StudentAnswer question={self.question_id} correct={self.is_correct}>"
 
 
 # ==========================
-# ✅ QUESTIONS MODEL
+# ✅ QUESTION MODEL
 # ==========================
 class Question(db.Model):
     __tablename__ = "question"
 
     id = db.Column(db.Integer, primary_key=True)
     test_id = db.Column(db.Integer, db.ForeignKey("test.id"), nullable=False)
-
     text = db.Column(db.Text, nullable=False)
+
     option_a = db.Column(db.String(255), nullable=False)
     option_b = db.Column(db.String(255), nullable=False)
     option_c = db.Column(db.String(255), nullable=False)
     option_d = db.Column(db.String(255), nullable=False)
     correct_option = db.Column(db.String(1), nullable=False)
-    marks = db.Column(db.Integer, default=1)
 
+    marks = db.Column(db.Integer, default=1)
     topic = db.Column(db.String(100), nullable=True)
     difficulty = db.Column(db.String(20), nullable=True)
 
-    # Relationship with AI-identified topic
     ai_topic = db.relationship("Topic", backref="question", uselist=False)
 
     def __repr__(self):
-        return f"<Question {self.text[:20]}...>"
+        return f"<Question {self.text[:25]}...>"
 
 
 # ==========================
@@ -216,7 +223,7 @@ class AssignmentSubmission(db.Model):
 
 
 # ==========================
-# ✅ STUDENT ANALYTICS (UPDATED)
+# ✅ ANALYTICS MODEL
 # ==========================
 class StudentAnalytics(db.Model):
     __tablename__ = "student_analytics"
@@ -228,9 +235,8 @@ class StudentAnalytics(db.Model):
     overall_score = db.Column(db.Float, default=0.0)
     weak_topics = db.Column(db.JSON, nullable=True)
     strong_topics = db.Column(db.JSON, nullable=True)
-    predicted_weak_topics = db.Column(db.JSON, nullable=True)  # NEW FIELD
+    predicted_weak_topics = db.Column(db.JSON, nullable=True)
     history = db.Column(db.JSON, nullable=True)
-
     last_updated = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __repr__(self):
@@ -238,7 +244,7 @@ class StudentAnalytics(db.Model):
 
 
 # ==========================
-# ✅ AI PROCTORING LOGS
+# ✅ PROCTORING
 # ==========================
 class ProctoringLog(db.Model):
     __tablename__ = "proctoring_log"
@@ -252,20 +258,17 @@ class ProctoringLog(db.Model):
     mobile_detected = db.Column(db.Boolean, default=False)
     window_switch_detected = db.Column(db.Boolean, default=False)
     eye_gaze_away = db.Column(db.Boolean, default=False)
-
     suspicious_activity = db.Column(db.String(255), nullable=True)
     warning_level = db.Column(db.Integer, default=0)
     system_message = db.Column(db.String(255), nullable=True)
     auto_submitted = db.Column(db.Boolean, default=False)
 
     attempt = db.relationship("TestAttempt", backref="proctoring_logs")
+
     def __repr__(self):
         return f"<ProctoringLog attempt={self.attempt_id} warnings={self.warning_level}>"
 
 
-# ==========================
-# ✅ STRESS DETECTION LOGS
-# ==========================
 class StressLog(db.Model):
     __tablename__ = "stress_log"
 
@@ -282,9 +285,6 @@ class StressLog(db.Model):
         return f"<StressLog attempt={self.attempt_id} emotion={self.detected_emotion}>"
 
 
-# ==========================
-# ✅ PROCTORING SUMMARY
-# ==========================
 class ProctoringSummary(db.Model):
     __tablename__ = "proctoring_summary"
 
@@ -303,7 +303,7 @@ class ProctoringSummary(db.Model):
 
 
 # ==========================
-# ✅ GEMINI + YOUTUBE MODELS
+# ✅ TOPIC + FOLLOWUP + VIDEO (AI + REVIEW SYSTEM)
 # ==========================
 class Topic(db.Model):
     __tablename__ = "topic"
@@ -314,10 +314,8 @@ class Topic(db.Model):
     chapter = db.Column(db.String(100), nullable=True)
     subtopic = db.Column(db.String(100), nullable=True)
     confidence_score = db.Column(db.Float, default=0.0)
-
     question_id = db.Column(db.Integer, db.ForeignKey("question.id"), nullable=True)
 
-    # Relationships
     followup_assignments = db.relationship("FollowupAssignment", backref="topic", lazy=True, cascade="all, delete-orphan")
     recommended_videos = db.relationship("RecommendedVideo", backref="topic", lazy=True, cascade="all, delete-orphan")
 
@@ -329,33 +327,38 @@ class FollowupAssignment(db.Model):
     __tablename__ = "followup_assignment"
 
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    topic_id = db.Column(db.Integer, db.ForeignKey("topic.id"), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey("user.id", name="fk_followup_student_id"), nullable=False)
+    topic_id = db.Column(db.Integer, db.ForeignKey("topic.id", name="fk_followup_topic_id"), nullable=False)
+    attempt_id = db.Column(db.Integer, db.ForeignKey("test_attempt.id", name="fk_followup_attempt_id"), nullable=False)
 
     question_text = db.Column(db.Text, nullable=False)
     options = db.Column(db.JSON, nullable=False)
     correct_answer = db.Column(db.String(1), nullable=False)
-
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
     is_attempted = db.Column(db.Boolean, default=False)
+    student_answer = db.Column(db.String(1), nullable=True)
     is_correct = db.Column(db.Boolean, default=False)
 
     def __repr__(self):
-        return f"<FollowupAssignment student={self.student_id} topic={self.topic_id}>"
+        return f"<FollowupAssignment student={self.student_id} topic={self.topic_id} attempt={self.attempt_id}>"
 
 
 class RecommendedVideo(db.Model):
     __tablename__ = "recommended_video"
 
     id = db.Column(db.Integer, primary_key=True)
-    topic_id = db.Column(db.Integer, db.ForeignKey("topic.id"), nullable=False)
+    topic_id = db.Column(db.Integer, db.ForeignKey("topic.id", name="fk_video_topic_id"), nullable=False)
 
     video_title = db.Column(db.String(255), nullable=False)
     video_url = db.Column(db.String(255), nullable=False)
     channel_name = db.Column(db.String(150), nullable=True)
     views = db.Column(db.Integer, default=0)
+    video_summary = db.Column(db.Text, nullable=True)
+
+    video_thumbnail = db.Column(db.String(500), nullable=True)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __repr__(self):
-        return f"<RecommendedVideo topic={self.topic_id} title={self.video_title[:20]}>"
+        return f"<RecommendedVideo topic={self.topic_id} title={self.video_title[:25]}>"

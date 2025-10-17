@@ -1,15 +1,58 @@
-from flask import Blueprint, render_template, request, redirect, flash, url_for, session, jsonify
+# ==============================
+# FLASK IMPORTS
+# ==============================
+from flask import (
+    current_app, Blueprint, render_template, request, redirect, flash,
+    url_for, session, jsonify
+)
 from flask_login import current_user, login_required
-from models import db, Class, StudentClass, Test, Question, TestAttempt, StudentAnswer, AssignmentSubmission, ProctoringLog
+
+# ==============================
+# DATABASE & MODELS
+# ==============================
+from models import (
+    db, Class, StudentClass, Test, Question, TestAttempt, StudentAnswer,
+    AssignmentSubmission, ProctoringLog, RecommendedVideo, Topic,
+    FollowupAssignment, User
+)
+from sqlalchemy.orm import joinedload
+
+# ==============================
+# UTILITY IMPORTS
+# ==============================
 from datetime import datetime, timedelta
+import os
+import json
+import requests
+from dotenv import load_dotenv
+import threading
+import time
+
+# ==============================
+# IMAGE / VIDEO PROCESSING
+# ==============================
 import base64
 import cv2
 import numpy as np
 import mediapipe as mp
 from ultralytics import YOLO
-import time
 
+# ==============================
+# AI / GEMINI
+# ==============================
+import google.genai as genai
+load_dotenv()
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+# single blueprint declaration
 student_bp = Blueprint("student", __name__, url_prefix="/student")
+
+# Load env once (optional: do this in app factory instead)
+load_dotenv()
+
 
 # ==============================
 # DASHBOARD
@@ -179,7 +222,6 @@ def start_test(test_id, question_index=0):
 
     remaining_seconds = int((attempt.end_time - now).total_seconds())
     if remaining_seconds <= 0:
-        # Auto-submit
         attempt.correct_answers = StudentAnswer.query.filter_by(attempt_id=attempt.id, is_correct=True).count()
         attempt.wrong_answers = StudentAnswer.query.filter_by(attempt_id=attempt.id, is_correct=False).count()
         attempt.total_questions = len(test.questions)
@@ -188,7 +230,6 @@ def start_test(test_id, question_index=0):
         flash("⏰ Time over! Test submitted automatically.", "danger")
         return redirect(url_for("student.dashboard"))
 
-    # Load questions
     questions = test.questions
     total_questions = len(questions)
     if total_questions == 0:
@@ -200,14 +241,10 @@ def start_test(test_id, question_index=0):
 
     current_question = questions[question_index]
     student_answer = StudentAnswer.query.filter_by(attempt_id=attempt.id, question_id=current_question.id).first()
-    options = {
-        "A": current_question.option_a,
-        "B": current_question.option_b,
-        "C": current_question.option_c,
-        "D": current_question.option_d
-    }
+    options = {"A": current_question.option_a, "B": current_question.option_b,
+               "C": current_question.option_c, "D": current_question.option_d}
 
-    # Handle POST
+    # -------------------- POST HANDLER --------------------
     if request.method == "POST":
         selected_option = request.form.get("selected_option")
         mark_review = "mark" in request.form
@@ -226,10 +263,9 @@ def start_test(test_id, question_index=0):
                 student_answer.selected_option = selected_option
                 student_answer.is_correct = selected_option == current_question.correct_option
             student_answer.marked_for_review = mark_review
-
         db.session.commit()
 
-        # Navigation
+        # Navigation or submit
         if "next" in request.form and question_index + 1 < total_questions:
             return redirect(url_for("student.start_test", test_id=test.id, question_index=question_index + 1))
         elif "prev" in request.form and question_index > 0:
@@ -241,9 +277,9 @@ def start_test(test_id, question_index=0):
             attempt.score = attempt.correct_answers
             db.session.commit()
             flash("🎉 Test submitted successfully!", "success")
-            return redirect(url_for("student.dashboard"))
+            return redirect(url_for("student.review_test", attempt_id=attempt.id))
 
-    # Sidebar question states
+    # -------------------- Sidebar State --------------------
     q_states = {}
     for idx, q in enumerate(questions):
         ans = StudentAnswer.query.filter_by(attempt_id=attempt.id, question_id=q.id).first()
@@ -258,15 +294,10 @@ def start_test(test_id, question_index=0):
 
     return render_template(
         "student/start_test.html",
-        test=test,
-        current_question=current_question,
-        current_index=question_index,
-        total_questions=total_questions,
-        student_answer=student_answer,
-        q_states=q_states,
-        remaining_seconds=remaining_seconds,
-        options=options,
-        attempt=attempt
+        test=test, current_question=current_question, current_index=question_index,
+        total_questions=total_questions, student_answer=student_answer,
+        q_states=q_states, remaining_seconds=remaining_seconds,
+        options=options, attempt=attempt
     )
 
 
@@ -295,7 +326,6 @@ def ajax_save_answer(test_id, question_index):
         student_answer = StudentAnswer(attempt_id=attempt.id, question_id=current_question.id)
         db.session.add(student_answer)
 
-    # Handle actions
     if action == "mark":
         student_answer.marked_for_review = True
     elif action == "clear":
@@ -307,6 +337,8 @@ def ajax_save_answer(test_id, question_index):
             student_answer.selected_option = selected_option
             student_answer.is_correct = (selected_option == current_question.correct_option)
 
+    db.session.commit()
+
     if action == "submit":
         attempt.correct_answers = StudentAnswer.query.filter_by(attempt_id=attempt.id, is_correct=True).count()
         attempt.wrong_answers = StudentAnswer.query.filter_by(attempt_id=attempt.id, is_correct=False).count()
@@ -315,9 +347,7 @@ def ajax_save_answer(test_id, question_index):
         db.session.commit()
         return jsonify({"submit": True})
 
-    db.session.commit()
-
-    # Update q_states
+    # Update q_states & counts
     q_states = {}
     for idx, q in enumerate(questions):
         ans = StudentAnswer.query.filter_by(attempt_id=attempt.id, question_id=q.id).first()
@@ -330,14 +360,8 @@ def ajax_save_answer(test_id, question_index):
         else:
             q_states[idx] = "not_visited"
 
-    counts = {
-        "answered": list(q_states.values()).count("answered"),
-        "review": list(q_states.values()).count("review"),
-        "visited": list(q_states.values()).count("visited"),
-        "not_visited": list(q_states.values()).count("not_visited")
-    }
+    counts = {state: list(q_states.values()).count(state) for state in ["answered", "review", "visited", "not_visited"]}
 
-    # Determine next index
     new_index = question_index
     if action == "next" and question_index + 1 < len(questions):
         new_index += 1
@@ -348,20 +372,207 @@ def ajax_save_answer(test_id, question_index):
 
 
 # ==============================
-# REVIEW TEST
+# STUDENT REVIEW TEST (Gemini + YouTube)
 # ==============================
-@student_bp.route("/review_test/<int:attempt_id>")
+
+@student_bp.route("/review_test/<int:attempt_id>", methods=["GET", "POST"])
 @login_required
 def review_test(attempt_id):
-    attempt = TestAttempt.query.filter_by(id=attempt_id, student_id=current_user.id).first_or_404()
+    # --------------------------
+    # 1️⃣ Fetch attempt and test
+    # --------------------------
+    attempt = (
+        TestAttempt.query.filter_by(id=attempt_id, student_id=current_user.id)
+        .options(joinedload(TestAttempt.test))
+        .first_or_404()
+    )
     test = attempt.test
+
+    # --------------------------
+    # 2️⃣ Fetch student's answers
+    # --------------------------
     answers = (
         StudentAnswer.query.filter_by(attempt_id=attempt.id)
         .join(Question, Question.id == StudentAnswer.question_id)
         .add_entity(Question)
         .all()
     )
-    return render_template("student/review_test.html", attempt=attempt, test=test, answers=answers)
+
+    if not answers:
+        flash("No review data available for this test yet.", "info")
+        return redirect(url_for("student.dashboard"))
+
+    wrongly_attempted = []
+    question_weak_topics = {}
+    weak_topics = []
+
+    # --------------------------
+    # 3️⃣ Identify weak topics
+    # --------------------------
+    for answer, question in answers:
+        if not answer.selected_option or answer.selected_option != question.correct_option:
+            wrongly_attempted.append((answer, question))
+
+            topic = Topic.query.filter_by(question_id=question.id).first()
+            if not topic:
+                try:
+                    # Use Gemini API to generate topic
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=f'Question: "{question.text}". Identify the most specific academic topic (3–6 words). Only return the topic name.'
+                    )
+                    topic_name = response.text.strip()
+                    topic = Topic(name=topic_name, question_id=question.id)
+                    db.session.add(topic)
+                    db.session.commit()
+                except Exception as e:
+                    print("Topic generation error:", e)
+                    topic_name = "Unknown Topic"
+            else:
+                topic_name = topic.name
+
+            question_weak_topics[question.id] = topic_name
+            weak_topics.append(topic_name)
+
+    weak_topics = list(set(weak_topics))
+
+    # --------------------------
+    # 4️⃣ Prepare videos + followups
+    # --------------------------
+    topic_data = {}
+    for topic_name in weak_topics:
+        topic = Topic.query.filter_by(name=topic_name).first()
+        if not topic:
+            continue
+
+        # ----- YouTube Video -----
+        vid = RecommendedVideo.query.filter_by(topic_id=topic.id).first()
+        if not vid:
+            try:
+                search_url = (
+                    "https://www.googleapis.com/youtube/v3/search"
+                    f"?part=snippet&q={topic_name}+education&type=video&maxResults=1&key={YOUTUBE_API_KEY}"
+                )
+                resp = requests.get(search_url).json()
+                items = resp.get("items", [])
+                if items:
+                    item = items[0]
+                    vid_id = item["id"].get("videoId")
+                    if vid_id:
+                        video_url = f"https://www.youtube.com/embed/{vid_id}"
+                        video_title = item["snippet"]["title"]
+                        video_thumbnail = item["snippet"]["thumbnails"]["high"]["url"]
+
+                        # Generate video summary using Gemini
+                        summary_resp = client.models.generate_content(
+                            model="gemini-2.5-flash",
+                            contents=f"Provide a short educational summary (2-3 lines) of the YouTube video titled '{video_title}'."
+                        )
+                        video_summary = summary_resp.text.strip()
+
+                        vid = RecommendedVideo(
+                            topic_id=topic.id,
+                            video_title=video_title,
+                            video_url=video_url,
+                            video_thumbnail=video_thumbnail,
+                            video_summary=video_summary
+                        )
+                        db.session.add(vid)
+                        db.session.commit()
+            except Exception as e:
+                print("Video fetch error:", e)
+                vid = None
+
+        # ----- Follow-up assignments -----
+        fas = FollowupAssignment.query.filter_by(
+            student_id=current_user.id,
+            attempt_id=attempt.id,
+            topic_id=topic.id
+        ).all()
+
+        if not fas:
+            topic_questions = [
+                q for _, q in wrongly_attempted if question_weak_topics[q.id] == topic_name
+            ][:2]
+
+            for question in topic_questions:
+                try:
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=f'Generate one MCQ similar to "{question.text}". Provide 4 options (A–D) and specify the correct option.'
+                    )
+                    text = response.text
+                    lines = [l.strip() for l in text.split("\n") if l.strip()]
+
+                    qtext, opts, correct = "", {}, ""
+                    for line in lines:
+                        if line.startswith("Question:"):
+                            qtext = line.replace("Question:", "").strip()
+                        elif line[:2] in ["A)", "B)", "C)", "D)"]:
+                            opts[line[0]] = line[2:].strip()
+                        elif "Correct Option" in line:
+                            correct = line.split(":")[-1].strip()
+
+                    if qtext:
+                        fa = FollowupAssignment(
+                            student_id=current_user.id,
+                            attempt_id=attempt.id,
+                            topic_id=topic.id,
+                            question_text=qtext,
+                            options=opts,
+                            correct_answer=correct
+                        )
+                        db.session.add(fa)
+                        db.session.commit()
+                except Exception as e:
+                    print("Follow-up gen error:", e)
+                    continue
+
+        # Reload after possible additions
+        fas = FollowupAssignment.query.filter_by(
+            student_id=current_user.id,
+            attempt_id=attempt.id,
+            topic_id=topic.id
+        ).all()
+
+        topic_data[topic_name] = {"video": vid, "followups": fas}
+
+    # --------------------------
+    # 5️⃣ Handle follow-up POST
+    # --------------------------
+    if request.method == "POST":
+        correct_count = 0
+        total_assignments = 0
+
+        for topic_name, data in topic_data.items():
+            for fa in data["followups"]:
+                submitted = request.form.get(f"followup_{fa.id}")
+                fa.student_answer = submitted
+                fa.is_attempted = bool(submitted)
+                fa.is_correct = submitted == fa.correct_answer
+                if fa.is_correct:
+                    correct_count += 1
+                total_assignments += 1
+
+        attempt.followup_score = (
+            round((correct_count / total_assignments) * 100, 2) if total_assignments else 0
+        )
+        attempt.followup_attempted = True
+        db.session.commit()
+        flash("✅ Follow-up submitted successfully!", "success")
+        return redirect(url_for("student.review_test", attempt_id=attempt.id))
+
+    # --------------------------
+    # 6️⃣ Render
+    # --------------------------
+    return render_template(
+        "student/review_test.html",
+        attempt=attempt,
+        test=test,
+        answers=answers,
+        question_weak_topics=question_weak_topics,
+        topic_data=topic_data
+    )
 
 
 # ==============================
