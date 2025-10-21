@@ -710,3 +710,33 @@ def analyze_frame():
         "warnings": session.get(warn_key, 0),
         "auto_submit": auto_submit
     })
+
+
+# ==============================
+# FOLLOW-UP ASSIGNMENT PAGE
+# ==============================
+@student_bp.route("/followup_assignment/<int:attempt_id>")
+@login_required
+def followup_assignment(attempt_id):
+    attempt = (
+        TestAttempt.query.filter_by(id=attempt_id, student_id=current_user.id)
+        .options(joinedload(TestAttempt.test))
+        .first_or_404()
+    )
+
+    # Fetch all follow-up assignments for this test attempt
+    followups = (
+        FollowupAssignment.query
+        .filter_by(student_id=current_user.id, attempt_id=attempt.id)
+        .all()
+    )
+
+    if not followups:
+        flash("No follow-up assignments found for this test yet.", "info")
+        return redirect(url_for("student.review_test", attempt_id=attempt.id))
+
+    return render_template(
+        "student/followup_assignment.html",
+        attempt=attempt,
+        followups=followups
+    )

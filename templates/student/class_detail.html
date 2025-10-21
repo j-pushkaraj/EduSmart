@@ -11,13 +11,16 @@
 
     <!-- Chapters & Tests -->
     <h2 class="text-2xl font-semibold mb-4">Chapters & Tests</h2>
+
     {% for chapter in chapters %}
     <div class="bg-white shadow rounded p-6 mb-6 hover:shadow-lg transition">
         <h3 class="text-xl font-medium text-gray-800 mb-2">{{ chapter.name }}</h3>
         <div class="space-y-3">
+
             {% for test in chapter.tests %}
             {% set attempt = attempts.get(test.id) %}
             {% set now = current_time %}
+
             <div class="border rounded p-3 hover:bg-gray-50">
                 <p class="font-medium">{{ test.name }}</p>
                 <p class="text-sm text-gray-500">
@@ -26,6 +29,7 @@
                 </p>
 
                 {% if attempt %}
+                    <!-- ✅ Test Attempted -->
                     <p class="text-green-600 mt-1 font-medium">Status: Attempted</p>
                     <p class="text-sm text-gray-700 mt-1">
                         Correct: {{ attempt.correct_answers }} |
@@ -33,16 +37,31 @@
                         Total: {{ attempt.total_questions }} |
                         Score: {{ "%.2f"|format((attempt.score / (attempt.total_questions or 1)) * 100) }}%
                     </p>
+
+                    <!-- Review Button -->
                     <a href="{{ url_for('student.review_test', attempt_id=attempt.id) }}"
                        class="inline-block mt-2 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">
                         Review
                     </a>
+
+                    <!-- 🧠 Follow-up Assignment Button -->
+                    <a href="{{ url_for('student.followup_assignment', attempt_id=attempt.id) }}"
+                       class="inline-block mt-2 ml-2 px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm">
+                        Follow-up Assignment
+                    </a>
+
                 {% else %}
+                    <!-- 🕒 Test Not Attempted -->
                     {% if now < test.start_time %}
                         <p class="text-gray-500 mt-1">Status: Not Started</p>
-                        <a href="#" class="inline-block mt-2 px-3 py-1 bg-gray-400 text-white rounded text-sm cursor-not-allowed">Start Test</a>
+                        <a href="#"
+                           class="inline-block mt-2 px-3 py-1 bg-gray-400 text-white rounded text-sm cursor-not-allowed">
+                           Start Test
+                        </a>
+
                     {% elif now > (test.end_time or (test.start_time + timedelta(minutes=test.duration_minutes))) %}
                         <p class="text-red-600 mt-1 font-medium">Status: Missed</p>
+
                     {% else %}
                         <p class="text-blue-600 mt-1 font-medium">Status: Active</p>
                         <a href="{{ url_for('student.start_test', test_id=test.id, question_index=0) }}"
@@ -57,24 +76,36 @@
     </div>
     {% endfor %}
 
-    <!-- Assignments -->
-    <h2 class="text-2xl font-semibold mb-4">Assignments</h2>
+    <!-- Assignments Section -->
+    <h2 class="text-2xl font-semibold mb-4 mt-8">Assignments</h2>
+
     {% for assignment in assignments %}
     {% set submission = submissions.get(assignment.id) %}
     <div class="bg-white shadow rounded p-6 mb-4 hover:shadow-lg transition">
         <p class="font-medium">{{ assignment.title }}</p>
-        <p class="text-gray-500 text-sm mb-2">{{ assignment.description or "No description available." }}</p>
+        <p class="text-gray-500 text-sm mb-2">
+            {{ assignment.description or "No description available." }}
+        </p>
         <p class="text-gray-500 text-sm">
             Due: {{ assignment.due_date.strftime('%d %b %Y %H:%M') if assignment.due_date else "No deadline" }}
         </p>
 
         {% if submission %}
+            <!-- ✅ Assignment Submitted -->
             <p class="text-green-600 mt-1 font-medium">Status: Submitted</p>
             <p class="text-sm text-gray-700 mt-1">
                 Score: {{ submission.score }} |
                 Feedback: {{ submission.feedback or "N/A" }}
             </p>
+
+            <!-- 📘 Follow-up Assignment Button (After Submission) -->
+            <a href="{{ url_for('student.followup_assignment', attempt_id=submission.id) }}"
+               class="inline-block mt-2 px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm">
+                Follow-up Assignment
+            </a>
+
         {% else %}
+            <!-- ⏳ Assignment Not Submitted -->
             {% if assignment.due_date and current_time > assignment.due_date %}
                 <p class="text-red-600 mt-1 font-medium">Status: Missed</p>
             {% else %}
