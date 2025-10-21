@@ -13,7 +13,7 @@ from flask_login import current_user, login_required
 from models import (
     db, Class, StudentClass, Test, Question, TestAttempt, StudentAnswer,
     AssignmentSubmission, ProctoringLog, RecommendedVideo, Topic,
-    FollowupAssignment, User
+    FollowupAssignment, User,  TopicNote, TopicTrick
 )
 from sqlalchemy.orm import joinedload
 
@@ -27,6 +27,10 @@ import requests
 from dotenv import load_dotenv
 import threading
 import time
+import traceback
+from flask import current_app
+from concurrent.futures import ThreadPoolExecutor
+
 
 # ==============================
 # IMAGE / VIDEO PROCESSING
@@ -370,29 +374,28 @@ def ajax_save_answer(test_id, question_index):
 
     return jsonify({"q_states": q_states, "counts": counts, "new_index": new_index})
 
-
 # ==============================
-# STUDENT REVIEW TEST (Gemini + YouTube)
+# REVIEW TEST
 # ==============================
-
-@student_bp.route("/review_test/<int:attempt_id>", methods=["GET", "POST"])
+@student_bp.route("/review_test/<int:attempt_id>")
 @login_required
 def review_test(attempt_id):
-    # --------------------------
+    from sqlalchemy.orm import joinedload
+    import requests
+
     # 1️⃣ Fetch attempt and test
-    # --------------------------
     attempt = (
-        TestAttempt.query.filter_by(id=attempt_id, student_id=current_user.id)
+        TestAttempt.query
+        .filter_by(id=attempt_id, student_id=current_user.id)
         .options(joinedload(TestAttempt.test))
         .first_or_404()
     )
     test = attempt.test
 
-    # --------------------------
     # 2️⃣ Fetch student's answers
-    # --------------------------
     answers = (
-        StudentAnswer.query.filter_by(attempt_id=attempt.id)
+        StudentAnswer.query
+        .filter_by(attempt_id=attempt.id)
         .join(Question, Question.id == StudentAnswer.question_id)
         .add_entity(Question)
         .all()
@@ -402,169 +405,101 @@ def review_test(attempt_id):
         flash("No review data available for this test yet.", "info")
         return redirect(url_for("student.dashboard"))
 
-    wrongly_attempted = []
     question_weak_topics = {}
-    weak_topics = []
+    topic_data = {}
 
-    # --------------------------
-    # 3️⃣ Identify weak topics
-    # --------------------------
+    # 3️⃣ Identify weak topics & generate if missing
     for answer, question in answers:
         if not answer.selected_option or answer.selected_option != question.correct_option:
-            wrongly_attempted.append((answer, question))
-
+            # Get or generate topic
             topic = Topic.query.filter_by(question_id=question.id).first()
             if not topic:
                 try:
-                    # Use Gemini API to generate topic
                     response = client.models.generate_content(
                         model="gemini-2.5-flash",
                         contents=f'Question: "{question.text}". Identify the most specific academic topic (3–6 words). Only return the topic name.'
                     )
-                    topic_name = response.text.strip()
+                    topic_name = response.text.strip() or "General Knowledge"
                     topic = Topic(name=topic_name, question_id=question.id)
                     db.session.add(topic)
                     db.session.commit()
                 except Exception as e:
                     print("Topic generation error:", e)
-                    topic_name = "Unknown Topic"
+                    topic_name = "General Knowledge"
             else:
                 topic_name = topic.name
 
             question_weak_topics[question.id] = topic_name
-            weak_topics.append(topic_name)
 
-    weak_topics = list(set(weak_topics))
-
-    # --------------------------
-    # 4️⃣ Prepare videos + followups
-    # --------------------------
-    topic_data = {}
-    for topic_name in weak_topics:
-        topic = Topic.query.filter_by(name=topic_name).first()
-        if not topic:
-            continue
-
-        # ----- YouTube Video -----
-        vid = RecommendedVideo.query.filter_by(topic_id=topic.id).first()
-        if not vid:
-            try:
-                search_url = (
-                    "https://www.googleapis.com/youtube/v3/search"
-                    f"?part=snippet&q={topic_name}+education&type=video&maxResults=1&key={YOUTUBE_API_KEY}"
-                )
-                resp = requests.get(search_url).json()
-                items = resp.get("items", [])
-                if items:
-                    item = items[0]
-                    vid_id = item["id"].get("videoId")
-                    if vid_id:
-                        video_url = f"https://www.youtube.com/embed/{vid_id}"
-                        video_title = item["snippet"]["title"]
-                        video_thumbnail = item["snippet"]["thumbnails"]["high"]["url"]
-
-                        # Generate video summary using Gemini
-                        summary_resp = client.models.generate_content(
-                            model="gemini-2.5-flash",
-                            contents=f"Provide a short educational summary (2-3 lines) of the YouTube video titled '{video_title}'."
+            # Prepare topic_data
+            if topic_name not in topic_data:
+                # 3a️⃣ YouTube Video
+                vid = RecommendedVideo.query.filter_by(topic_id=topic.id).first()
+                if not vid:
+                    try:
+                        search_url = (
+                            "https://www.googleapis.com/youtube/v3/search"
+                            f"?part=snippet&q={topic_name}+education&type=video&maxResults=1&key={YOUTUBE_API_KEY}"
                         )
-                        video_summary = summary_resp.text.strip()
+                        resp = requests.get(search_url).json()
+                        items = resp.get("items", [])
+                        if items:
+                            item = items[0]
+                            vid_id = item["id"].get("videoId")
+                            if vid_id:
+                                video_url = f"https://www.youtube.com/embed/{vid_id}"
+                                video_title = item["snippet"]["title"]
+                                video_thumbnail = item["snippet"]["thumbnails"]["high"]["url"]
 
-                        vid = RecommendedVideo(
-                            topic_id=topic.id,
-                            video_title=video_title,
-                            video_url=video_url,
-                            video_thumbnail=video_thumbnail,
-                            video_summary=video_summary
-                        )
-                        db.session.add(vid)
-                        db.session.commit()
-            except Exception as e:
-                print("Video fetch error:", e)
-                vid = None
+                                # Generate video summary using Gemini
+                                summary_resp = client.models.generate_content(
+                                    model="gemini-2.5-flash",
+                                    contents=f"Provide a short educational summary (2-3 lines) of the YouTube video titled '{video_title}'."
+                                )
+                                video_summary = summary_resp.text.strip()
 
-        # ----- Follow-up assignments -----
-        fas = FollowupAssignment.query.filter_by(
-            student_id=current_user.id,
-            attempt_id=attempt.id,
-            topic_id=topic.id
-        ).all()
+                                vid = RecommendedVideo(
+                                    topic_id=topic.id,
+                                    video_title=video_title,
+                                    video_url=video_url,
+                                    video_thumbnail=video_thumbnail,
+                                    video_summary=video_summary
+                                )
+                                db.session.add(vid)
+                                db.session.commit()
+                    except Exception as e:
+                        print("Video fetch error:", e)
+                        vid = None
 
-        if not fas:
-            topic_questions = [
-                q for _, q in wrongly_attempted if question_weak_topics[q.id] == topic_name
-            ][:2]
-
-            for question in topic_questions:
+                # 3b️⃣ AI Study Notes
+                notes = ""
                 try:
-                    response = client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=f'Generate one MCQ similar to "{question.text}". Provide 4 options (A–D) and specify the correct option.'
-                    )
-                    text = response.text
-                    lines = [l.strip() for l in text.split("\n") if l.strip()]
-
-                    qtext, opts, correct = "", {}, ""
-                    for line in lines:
-                        if line.startswith("Question:"):
-                            qtext = line.replace("Question:", "").strip()
-                        elif line[:2] in ["A)", "B)", "C)", "D)"]:
-                            opts[line[0]] = line[2:].strip()
-                        elif "Correct Option" in line:
-                            correct = line.split(":")[-1].strip()
-
-                    if qtext:
-                        fa = FollowupAssignment(
-                            student_id=current_user.id,
-                            attempt_id=attempt.id,
-                            topic_id=topic.id,
-                            question_text=qtext,
-                            options=opts,
-                            correct_answer=correct
+                    if hasattr(topic, "notes") and topic.notes:
+                        notes = topic.notes
+                    else:
+                        notes_resp = client.models.generate_content(
+                            model="gemini-2.5-flash",
+                            contents=f"Write concise study notes (4-6 bullet points) for the topic: {topic_name}."
                         )
-                        db.session.add(fa)
+                        notes = notes_resp.text.strip()
+                        topic.notes = notes
                         db.session.commit()
                 except Exception as e:
-                    print("Follow-up gen error:", e)
-                    continue
+                    print("Notes generation error:", e)
+                    notes = f"Study notes for {topic_name} not available."
 
-        # Reload after possible additions
-        fas = FollowupAssignment.query.filter_by(
-            student_id=current_user.id,
-            attempt_id=attempt.id,
-            topic_id=topic.id
-        ).all()
+                topic_data[topic_name] = {
+                    "video": vid,
+                    "notes": notes
+                }
 
-        topic_data[topic_name] = {"video": vid, "followups": fas}
+    # Ensure every wrong/unattempted question topic is present
+    for answer, question in answers:
+        if question_weak_topics.get(question.id) not in topic_data:
+            t_name = question_weak_topics.get(question.id, "General Knowledge")
+            topic_data[t_name] = topic_data.get(t_name, {"video": None, "notes": "Notes not available."})
 
-    # --------------------------
-    # 5️⃣ Handle follow-up POST
-    # --------------------------
-    if request.method == "POST":
-        correct_count = 0
-        total_assignments = 0
-
-        for topic_name, data in topic_data.items():
-            for fa in data["followups"]:
-                submitted = request.form.get(f"followup_{fa.id}")
-                fa.student_answer = submitted
-                fa.is_attempted = bool(submitted)
-                fa.is_correct = submitted == fa.correct_answer
-                if fa.is_correct:
-                    correct_count += 1
-                total_assignments += 1
-
-        attempt.followup_score = (
-            round((correct_count / total_assignments) * 100, 2) if total_assignments else 0
-        )
-        attempt.followup_attempted = True
-        db.session.commit()
-        flash("✅ Follow-up submitted successfully!", "success")
-        return redirect(url_for("student.review_test", attempt_id=attempt.id))
-
-    # --------------------------
-    # 6️⃣ Render
-    # --------------------------
+    # 4️⃣ Render template
     return render_template(
         "student/review_test.html",
         attempt=attempt,
@@ -711,32 +646,148 @@ def analyze_frame():
         "auto_submit": auto_submit
     })
 
+# ==============================
+# FOLLOW-UP ASSIGNMENT GENERATION (Optimized)
+# ==============================
 
-# ==============================
-# FOLLOW-UP ASSIGNMENT PAGE
-# ==============================
-@student_bp.route("/followup_assignment/<int:attempt_id>")
+@student_bp.route("/followup_assignment/<int:attempt_id>", methods=["GET", "POST"])
 @login_required
 def followup_assignment(attempt_id):
-    attempt = (
-        TestAttempt.query.filter_by(id=attempt_id, student_id=current_user.id)
-        .options(joinedload(TestAttempt.test))
-        .first_or_404()
-    )
+    import traceback
 
-    # Fetch all follow-up assignments for this test attempt
-    followups = (
-        FollowupAssignment.query
-        .filter_by(student_id=current_user.id, attempt_id=attempt.id)
-        .all()
-    )
+    attempt = TestAttempt.query.filter_by(id=attempt_id, student_id=current_user.id).first_or_404()
+    generation_error = None
 
-    if not followups:
-        flash("No follow-up assignments found for this test yet.", "info")
-        return redirect(url_for("student.review_test", attempt_id=attempt.id))
+    # --------------------------
+    # 1️⃣ Identify weak topics from wrong answers
+    # --------------------------
+    wrong_answers = [ans for ans in attempt.answers if not ans.is_correct]
+    weak_topic_names = set()
 
+    for ans in wrong_answers:
+        try:
+            # ✅ Use existing DB topic if available
+            if ans.question.topic:
+                weak_topic_names.add(ans.question.topic.name)
+            else:
+                # ✅ Try to derive a short topic name efficiently (low token usage)
+                question_text = ans.question.text[:100]  # truncate long questions
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash",  # cheaper + lighter
+                    contents=f"""
+                    Generate a concise topic name (1–3 words max) for this question:
+                    "{question_text}"
+                    Return only the topic name, no explanation.
+                    """
+                )
+                topic_name = response.text.strip().replace("Topic:", "").strip()
+                if topic_name:
+                    weak_topic_names.add(topic_name)
+        except Exception as e:
+            print("Error generating topic:", traceback.format_exc())
+            generation_error = str(e)
+            continue
+
+    weak_topic_names = list(weak_topic_names)
+
+    # --------------------------
+    # 2️⃣ Retrieve existing follow-ups or generate new ones
+    # --------------------------
+    followups = FollowupAssignment.query.filter_by(
+        student_id=current_user.id, attempt_id=attempt.id
+    ).all()
+
+    if not followups and weak_topic_names:
+        print(f"🧩 Generating {len(weak_topic_names)} follow-up questions...")
+        generated_followups = []
+
+        for topic_name in weak_topic_names:
+            try:
+                # ✅ Get or create topic once
+                topic = Topic.query.filter_by(name=topic_name).first()
+                if not topic:
+                    topic = Topic(name=topic_name)
+                    db.session.add(topic)
+                    db.session.commit()
+
+                # ✅ Generate only ONE high-quality MCQ per topic
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=f"""
+                    Create one high-quality MCQ for topic "{topic_name}".
+                    Format exactly as:
+                    Question: ...
+                    A) ...
+                    B) ...
+                    C) ...
+                    D) ...
+                    Correct Option: X
+                    """
+                )
+
+                text = response.text.strip()
+                lines = [l.strip() for l in text.split("\n") if l.strip()]
+                qtext, opts, correct = "", {}, ""
+
+                for line in lines:
+                    if line.startswith("Question:"):
+                        qtext = line.replace("Question:", "").strip()
+                    elif line[:2] in ["A)", "B)", "C)", "D)"]:
+                        opts[line[0]] = line[2:].strip()
+                    elif "Correct Option" in line:
+                        correct = line.split(":")[-1].strip()
+
+                if qtext and opts and correct:
+                    fa = FollowupAssignment(
+                        student_id=current_user.id,
+                        attempt_id=attempt.id,
+                        topic_id=topic.id,
+                        question_text=qtext,
+                        options=opts,
+                        correct_answer=correct
+                    )
+                    db.session.add(fa)
+                    generated_followups.append(fa)
+
+            except Exception as e:
+                print("Follow-up generation error:", traceback.format_exc())
+                generation_error = str(e)
+                continue
+
+        db.session.commit()
+        print(f"✅ Generated {len(generated_followups)} follow-up questions total.")
+        return redirect(url_for("student.followup_assignment", attempt_id=attempt.id))
+
+    # --------------------------
+    # 3️⃣ Handle submission
+    # --------------------------
+    if request.method == "POST":
+        total = 0
+        correct_count = 0
+        for fa in followups:
+            submitted = request.form.get(f"followup_{fa.id}")
+            fa.student_answer = submitted
+            fa.is_attempted = bool(submitted)
+            fa.is_correct = submitted == fa.correct_answer
+            if fa.is_correct:
+                correct_count += 1
+            total += 1
+        db.session.commit()
+
+        attempt.followup_score = round((correct_count / total) * 100, 2) if total else 0
+        attempt.followup_attempted = True
+        db.session.commit()
+
+        flash(f"✅ Follow-up submitted! Improvement Score: {attempt.followup_score}%", "success")
+        return redirect(url_for("student.followup_assignment", attempt_id=attempt.id))
+
+    # --------------------------
+    # 4️⃣ Render the page
+    # --------------------------
     return render_template(
         "student/followup_assignment.html",
         attempt=attempt,
-        followups=followups
+        followups=followups,
+        weak_topics=weak_topic_names,
+        generation_error=generation_error
     )

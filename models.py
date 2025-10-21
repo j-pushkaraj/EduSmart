@@ -362,3 +362,14 @@ class RecommendedVideo(db.Model):
 
     def __repr__(self):
         return f"<RecommendedVideo topic={self.topic_id} title={self.video_title[:25]}>"
+
+
+class TopicNote(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    topic_id = db.Column(db.Integer, db.ForeignKey("topic.id"))
+    content = db.Column(db.Text)
+
+class TopicTrick(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    topic_id = db.Column(db.Integer, db.ForeignKey("topic.id"))
+    content = db.Column(db.Text)

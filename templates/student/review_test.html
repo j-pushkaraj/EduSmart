@@ -4,15 +4,16 @@
 
     <h1 class="text-3xl font-bold mb-6">Review Test: {{ test.name }}</h1>
 
-    <!-- Your Answers -->
+    <!-- Questions & Answers -->
     <div class="mb-10">
         <h2 class="text-2xl font-semibold mb-4">Your Answers</h2>
-        <ol class="list-decimal pl-5 space-y-4">
+        <ol class="list-decimal pl-5 space-y-6">
             {% for answer, question in answers %}
                 {% set is_correct = answer.selected_option == question.correct_option %}
-                <li>
-                    <p class="font-medium">{{ question.text }}</p>
-                    <ul class="pl-4 mt-1">
+                <li class="border rounded-lg p-4 shadow-sm hover:shadow-md transition">
+                    <p class="font-medium text-gray-800">{{ question.text }}</p>
+
+                    <ul class="pl-5 mt-2 space-y-1">
                         {% for opt, text in [('A', question.option_a), ('B', question.option_b), ('C', question.option_c), ('D', question.option_d)] %}
                             {% if opt == question.correct_option %}
                                 <li class="text-green-600 font-semibold">
@@ -27,64 +28,40 @@
                             {% endif %}
                         {% endfor %}
                     </ul>
+
                     {% if question_weak_topics[question.id] %}
-                        <p class="mt-1 text-sm text-gray-600">Weak Topic: {{ question_weak_topics[question.id] }}</p>
+                        <p class="mt-2 text-sm text-gray-600 font-medium">Weak Topic: {{ question_weak_topics[question.id] }}</p>
+
+                        {% set topic = topic_data[question_weak_topics[question.id]] %}
+                        {% if topic %}
+                        <!-- Video -->
+                        {% if topic.video %}
+                        <div class="mt-3 mb-2">
+                            <iframe class="w-full h-56 rounded-lg shadow-md" 
+                                    src="{{ topic.video.video_url }}" 
+                                    title="{{ topic.video.video_title or 'Video' }}" 
+                                    frameborder="0" allowfullscreen>
+                            </iframe>
+                            <p class="mt-1 font-medium text-gray-800">{{ topic.video.video_title or 'Untitled Video' }}</p>
+                            <p class="text-gray-600 text-sm">{{ topic.video.video_summary or 'No summary available.' }}</p>
+                        </div>
+                        {% endif %}
+
+                        <!-- AI Study Notes -->
+                        {% if topic.notes %}
+                        <div class="mt-2 bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
+                            <h4 class="text-lg font-semibold text-blue-700 mb-1">🧠 AI Study Notes</h4>
+                            <p class="text-gray-700 text-sm whitespace-pre-line leading-relaxed">
+                                {{ topic.notes }}
+                            </p>
+                        </div>
+                        {% endif %}
+                        {% endif %}
                     {% endif %}
                 </li>
             {% endfor %}
         </ol>
     </div>
-
-    <!-- Weak Topic Videos & Follow-up Assignments -->
-    {% if topic_data %}
-    <div class="mb-10">
-        <h2 class="text-2xl font-semibold mb-4">Weak Topic Recommendations & Follow-ups</h2>
-
-        {% for topic, data in topic_data.items() %}
-            <div class="mb-8 border rounded-lg shadow-sm p-4">
-                <h3 class="text-xl font-bold mb-2">{{ topic }}</h3>
-
-                <!-- Video -->
-                {% if data.video %}
-                    <div class="mb-3">
-                        <iframe class="w-full h-56 rounded" src="{{ data.video.video_url }}" title="{{ data.video.video_title }}" frameborder="0" allowfullscreen></iframe>
-                        <p class="font-medium mt-2">{{ data.video.video_title }}</p>
-                        <p class="text-gray-600 text-sm">{{ data.video.video_summary }}</p>
-                    </div>
-                {% else %}
-                    <p class="text-gray-500 mb-3">No video available</p>
-                {% endif %}
-
-                <!-- Follow-up Assignments -->
-                {% if data.followups %}
-                <form method="POST">
-                    <ol class="list-decimal pl-5 space-y-4">
-                        {% for fa in data.followups %}
-                            <li>
-                                <p class="font-medium mb-2">{{ fa.question_text }}</p>
-                                <div class="space-y-1">
-                                    {% for opt, text in fa.options.items() %}
-                                        <label class="block cursor-pointer">
-                                            <input type="radio" name="followup_{{ fa.id }}" value="{{ opt }}"
-                                                {% if fa.student_answer == opt %}checked{% endif %} 
-                                                class="mr-2">
-                                            {{ opt }}) {{ text }}
-                                        </label>
-                                    {% endfor %}
-                                </div>
-                            </li>
-                        {% endfor %}
-                    </ol>
-                    <button type="submit" class="mt-4 px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Submit Follow-up</button>
-                </form>
-                {% else %}
-                    <p class="text-gray-500 mt-2">No follow-up assignments available.</p>
-                {% endif %}
-            </div>
-        {% endfor %}
-
-    </div>
-    {% endif %}
 
 </div>
 {% endblock %}
