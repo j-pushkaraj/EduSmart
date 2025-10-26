@@ -315,6 +315,7 @@ class Topic(db.Model):
     subtopic = db.Column(db.String(100), nullable=True)
     confidence_score = db.Column(db.Float, default=0.0)
     question_id = db.Column(db.Integer, db.ForeignKey("question.id"), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
 
     followup_assignments = db.relationship("FollowupAssignment", backref="topic", lazy=True, cascade="all, delete-orphan")
     recommended_videos = db.relationship("RecommendedVideo", backref="topic", lazy=True, cascade="all, delete-orphan")
@@ -355,7 +356,6 @@ class RecommendedVideo(db.Model):
     channel_name = db.Column(db.String(150), nullable=True)
     views = db.Column(db.Integer, default=0)
     video_summary = db.Column(db.Text, nullable=True)
-
     video_thumbnail = db.Column(db.String(500), nullable=True)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -373,3 +373,19 @@ class TopicTrick(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     topic_id = db.Column(db.Integer, db.ForeignKey("topic.id"))
     content = db.Column(db.Text)
+
+
+class StudentReview(db.Model):
+    __tablename__ = "student_review"
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    test_id = db.Column(db.Integer, db.ForeignKey("test.id"), nullable=False)
+    topic_name = db.Column(db.String(150), nullable=False)
+    reviewed_on = db.Column(db.DateTime, default=datetime.utcnow)
+
+    student = db.relationship("User", backref="reviews", lazy=True)
+    test = db.relationship("Test", backref="reviews", lazy=True)
+
+    def __repr__(self):
+        return f"<StudentReview student={self.student_id} topic={self.topic_name}>"

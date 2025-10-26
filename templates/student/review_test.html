@@ -1,67 +1,118 @@
 {% extends "base.html" %}
+
 {% block content %}
 <div class="max-w-6xl mx-auto px-6 py-12">
 
-    <h1 class="text-3xl font-bold mb-6">Review Test: {{ test.name }}</h1>
+  <!-- Header -->
+  <div class="mb-10 text-center">
+    <h1 class="text-4xl font-extrabold text-gray-800 mb-2">
+      🧾 Review Test: <span class="text-blue-600">{{ test.name }}</span>
+    </h1>
+    <p class="text-gray-500 text-sm">
+      Attempted on {{ attempt.attempted_at.strftime('%d %b %Y, %I:%M %p') }}
 
-    <!-- Questions & Answers -->
-    <div class="mb-10">
-        <h2 class="text-2xl font-semibold mb-4">Your Answers</h2>
-        <ol class="list-decimal pl-5 space-y-6">
-            {% for answer, question in answers %}
-                {% set is_correct = answer.selected_option == question.correct_option %}
-                <li class="border rounded-lg p-4 shadow-sm hover:shadow-md transition">
-                    <p class="font-medium text-gray-800">{{ question.text }}</p>
+    </p>
+  </div>
 
-                    <ul class="pl-5 mt-2 space-y-1">
-                        {% for opt, text in [('A', question.option_a), ('B', question.option_b), ('C', question.option_c), ('D', question.option_d)] %}
-                            {% if opt == question.correct_option %}
-                                <li class="text-green-600 font-semibold">
-                                    {{ opt }}) {{ text }} {% if answer.selected_option == opt %}✅ Your Answer{% endif %}
-                                </li>
-                            {% elif opt == answer.selected_option %}
-                                <li class="text-red-600">
-                                    {{ opt }}) {{ text }} ❌ Your Answer
-                                </li>
-                            {% else %}
-                                <li>{{ opt }}) {{ text }}</li>
-                            {% endif %}
-                        {% endfor %}
-                    </ul>
+  <!-- Questions Review Section -->
+  <div class="space-y-8">
+    {% for answer, question in answers %}
+      {% set is_correct = answer.selected_option == question.correct_option %}
+      <div class="p-6 rounded-2xl border shadow-sm hover:shadow-md transition bg-white relative overflow-hidden">
 
-                    {% if question_weak_topics[question.id] %}
-                        <p class="mt-2 text-sm text-gray-600 font-medium">Weak Topic: {{ question_weak_topics[question.id] }}</p>
+        <!-- Subtle status bar -->
+        <div class="absolute top-0 left-0 w-full h-1 {% if is_correct %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
 
-                        {% set topic = topic_data[question_weak_topics[question.id]] %}
-                        {% if topic %}
-                        <!-- Video -->
-                        {% if topic.video %}
-                        <div class="mt-3 mb-2">
-                            <iframe class="w-full h-56 rounded-lg shadow-md" 
-                                    src="{{ topic.video.video_url }}" 
-                                    title="{{ topic.video.video_title or 'Video' }}" 
-                                    frameborder="0" allowfullscreen>
-                            </iframe>
-                            <p class="mt-1 font-medium text-gray-800">{{ topic.video.video_title or 'Untitled Video' }}</p>
-                            <p class="text-gray-600 text-sm">{{ topic.video.video_summary or 'No summary available.' }}</p>
-                        </div>
-                        {% endif %}
+        <p class="text-lg font-semibold text-gray-800 mb-3">
+          Q{{ loop.index }}. {{ question.text }}
+        </p>
 
-                        <!-- AI Study Notes -->
-                        {% if topic.notes %}
-                        <div class="mt-2 bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
-                            <h4 class="text-lg font-semibold text-blue-700 mb-1">🧠 AI Study Notes</h4>
-                            <p class="text-gray-700 text-sm whitespace-pre-line leading-relaxed">
-                                {{ topic.notes }}
-                            </p>
-                        </div>
-                        {% endif %}
-                        {% endif %}
-                    {% endif %}
-                </li>
-            {% endfor %}
-        </ol>
-    </div>
+        <!-- Options -->
+        <ul class="space-y-2">
+          {% for opt, text in [('A', question.option_a), ('B', question.option_b), ('C', question.option_c), ('D', question.option_d)] %}
+            <li class="flex items-start gap-2 text-sm">
+              {% if opt == question.correct_option %}
+                <span class="font-semibold text-green-700">✅ {{ opt }})</span>
+                <span class="text-green-700 font-medium">{{ text }}</span>
+                {% if answer.selected_option == opt %}
+                  <span class="ml-2 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">Your Answer</span>
+                {% endif %}
+              {% elif opt == answer.selected_option %}
+                <span class="font-semibold text-red-700">❌ {{ opt }})</span>
+                <span class="text-red-700">{{ text }}</span>
+                <span class="ml-2 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Your Answer</span>
+              {% else %}
+                <span class="text-gray-600">{{ opt }}) {{ text }}</span>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+
+        <!-- Weak Topic -->
+        {% if question_weak_topics[question.id] %}
+          {% set weak_topic = question_weak_topics[question.id] %}
+          <div class="mt-5 bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-400 rounded p-4">
+            <p class="font-medium text-blue-800 text-sm">
+              ⚠️ Weak Topic Identified: <span class="font-semibold">{{ weak_topic }}</span>
+            </p>
+
+            {% set topic = topic_data[weak_topic] %}
+            {% if topic %}
+              <!-- Recommended Video -->
+              {% if topic.video %}
+                <div class="mt-4">
+                  <div class="rounded-xl overflow-hidden shadow-sm hover:shadow-md transition">
+                    <iframe 
+                      class="w-full h-64" 
+                      src="{{ topic.video.video_url }}" 
+                      title="{{ topic.video.video_title or 'Recommended Video' }}" 
+                      frameborder="0" allowfullscreen>
+                    </iframe>
+                  </div>
+                  <div class="mt-2">
+                    <h3 class="text-base font-semibold text-gray-800">
+                      🎥 {{ topic.video.video_title or 'Recommended Learning Video' }}
+                    </h3>
+                    <p class="text-gray-600 text-sm leading-relaxed">
+                      {{ topic.video.video_summary or 'No summary available.' }}
+                    </p>
+                  </div>
+                </div>
+              {% endif %}
+
+              <!-- AI Study Notes -->
+              {% if topic.notes %}
+                <div class="mt-5 bg-blue-100 p-4 rounded-lg shadow-inner">
+                  <h4 class="text-blue-800 font-semibold mb-2 text-lg">🧠 AI Study Notes</h4>
+                  <p class="text-gray-700 text-sm whitespace-pre-line leading-relaxed">
+                    {{ topic.notes }}
+                  </p>
+                </div>
+              {% endif %}
+            {% endif %}
+          </div>
+        {% else %}
+          {% if is_correct %}
+            <p class="mt-3 text-sm text-green-600 font-medium">✅ You answered this correctly!</p>
+          {% endif %}
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- Completion Note -->
+  <div class="mt-10 text-center">
+    <form action="{{ url_for('student.mark_review_done', attempt_id=attempt.id) }}" method="POST">
+      {% for topic_name in topic_data.keys() %}
+        <input type="hidden" name="topics[]" value="{{ topic_name }}">
+      {% endfor %}
+      <button 
+        type="submit" 
+        class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-lg shadow-md transition">
+        Mark Review as Done ✅
+      </button>
+    </form>
+  </div>
 
 </div>
 {% endblock %}

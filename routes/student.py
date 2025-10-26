@@ -13,7 +13,7 @@ from flask_login import current_user, login_required
 from models import (
     db, Class, StudentClass, Test, Question, TestAttempt, StudentAnswer,
     AssignmentSubmission, ProctoringLog, RecommendedVideo, Topic,
-    FollowupAssignment, User,  TopicNote, TopicTrick
+    FollowupAssignment, User,  TopicNote, TopicTrick, StudentReview
 )
 from sqlalchemy.orm import joinedload
 
@@ -375,15 +375,16 @@ def ajax_save_answer(test_id, question_index):
     return jsonify({"q_states": q_states, "counts": counts, "new_index": new_index})
 
 # ==============================
-# REVIEW TEST
+# REVIEW TEST (Final Robust Version - Synced with models.py)
 # ==============================
 @student_bp.route("/review_test/<int:attempt_id>")
 @login_required
 def review_test(attempt_id):
     from sqlalchemy.orm import joinedload
     import requests
+    from datetime import datetime
 
-    # 1️⃣ Fetch attempt and test
+    # 1️⃣ Fetch attempt and related test
     attempt = (
         TestAttempt.query
         .filter_by(id=attempt_id, student_id=current_user.id)
@@ -392,7 +393,7 @@ def review_test(attempt_id):
     )
     test = attempt.test
 
-    # 2️⃣ Fetch student's answers
+    # 2️⃣ Fetch student's answers with linked questions
     answers = (
         StudentAnswer.query
         .filter_by(attempt_id=attempt.id)
@@ -408,98 +409,113 @@ def review_test(attempt_id):
     question_weak_topics = {}
     topic_data = {}
 
-    # 3️⃣ Identify weak topics & generate if missing
+    # 3️⃣ Process wrong or unattempted answers
     for answer, question in answers:
         if not answer.selected_option or answer.selected_option != question.correct_option:
-            # Get or generate topic
+
+            # ---- Identify or Generate Topic ----
             topic = Topic.query.filter_by(question_id=question.id).first()
             if not topic:
                 try:
+                    prompt = (
+                        f'Identify the main topic of this machine learning question: "{question.text}". '
+                        "Respond with a concise topic name (max 5 words)."
+                    )
                     response = client.models.generate_content(
                         model="gemini-2.5-flash",
-                        contents=f'Question: "{question.text}". Identify the most specific academic topic (3–6 words). Only return the topic name.'
+                        contents=prompt
                     )
-                    topic_name = response.text.strip() or "General Knowledge"
-                    topic = Topic(name=topic_name, question_id=question.id)
+                    topic_name = response.text.strip()
+
+                    if not topic_name or topic_name.lower() in ["unknown topic", "general concept"]:
+                        topic_name = "Core Machine Learning Concept"
+
+                    topic = Topic(name=topic_name, question_id=question.id, confidence_score=0.8)
                     db.session.add(topic)
-                    db.session.commit()
+                    db.session.flush()  # use flush to get topic.id without committing yet
                 except Exception as e:
                     print("Topic generation error:", e)
-                    topic_name = "General Knowledge"
+                    topic_name = "Core Machine Learning Concept"
             else:
                 topic_name = topic.name
 
             question_weak_topics[question.id] = topic_name
 
-            # Prepare topic_data
+            # ---- Prepare Topic Data ----
             if topic_name not in topic_data:
-                # 3a️⃣ YouTube Video
+                topic_entry = {"video": None, "notes": None}
+
+                # 3a️⃣ Fetch or generate YouTube Video
                 vid = RecommendedVideo.query.filter_by(topic_id=topic.id).first()
                 if not vid:
                     try:
                         search_url = (
                             "https://www.googleapis.com/youtube/v3/search"
-                            f"?part=snippet&q={topic_name}+education&type=video&maxResults=1&key={YOUTUBE_API_KEY}"
+                            f"?part=snippet&q={topic_name}+machine+learning+education&type=video&maxResults=1&key={YOUTUBE_API_KEY}"
                         )
                         resp = requests.get(search_url).json()
-                        items = resp.get("items", [])
-                        if items:
-                            item = items[0]
+                        item = resp.get("items", [])[0] if resp.get("items") else None
+
+                        if item:
                             vid_id = item["id"].get("videoId")
-                            if vid_id:
-                                video_url = f"https://www.youtube.com/embed/{vid_id}"
-                                video_title = item["snippet"]["title"]
-                                video_thumbnail = item["snippet"]["thumbnails"]["high"]["url"]
+                            video_title = item["snippet"]["title"]
+                            video_thumbnail = item["snippet"]["thumbnails"]["high"]["url"]
+                            video_url = f"https://www.youtube.com/embed/{vid_id}"
 
-                                # Generate video summary using Gemini
-                                summary_resp = client.models.generate_content(
-                                    model="gemini-2.5-flash",
-                                    contents=f"Provide a short educational summary (2-3 lines) of the YouTube video titled '{video_title}'."
-                                )
-                                video_summary = summary_resp.text.strip()
+                            # Generate summary (Gemini)
+                            summary_prompt = f"Summarize the educational value of '{video_title}' in 2 lines."
+                            summary_resp = client.models.generate_content(
+                                model="gemini-2.5-flash",
+                                contents=summary_prompt
+                            )
+                            video_summary = summary_resp.text.strip()
 
-                                vid = RecommendedVideo(
-                                    topic_id=topic.id,
-                                    video_title=video_title,
-                                    video_url=video_url,
-                                    video_thumbnail=video_thumbnail,
-                                    video_summary=video_summary
-                                )
-                                db.session.add(vid)
-                                db.session.commit()
+                            vid = RecommendedVideo(
+                                topic_id=topic.id,
+                                video_title=video_title,
+                                video_url=video_url,
+                                video_thumbnail=video_thumbnail,
+                                video_summary=video_summary
+                            )
+                            db.session.add(vid)
+                            db.session.flush()
                     except Exception as e:
                         print("Video fetch error:", e)
                         vid = None
 
-                # 3b️⃣ AI Study Notes
-                notes = ""
+                topic_entry["video"] = vid
+
+                # 3b️⃣ Fetch or Generate Notes
                 try:
-                    if hasattr(topic, "notes") and topic.notes:
+                    if topic.notes:
                         notes = topic.notes
                     else:
+                        notes_prompt = (
+                            f"Write concise 5-bullet educational notes for {topic_name}. "
+                            "Focus on intuition, core concept, and key takeaways."
+                        )
                         notes_resp = client.models.generate_content(
                             model="gemini-2.5-flash",
-                            contents=f"Write concise study notes (4-6 bullet points) for the topic: {topic_name}."
+                            contents=notes_prompt
                         )
                         notes = notes_resp.text.strip()
                         topic.notes = notes
-                        db.session.commit()
                 except Exception as e:
                     print("Notes generation error:", e)
-                    notes = f"Study notes for {topic_name} not available."
+                    notes = f"Study notes unavailable for {topic_name}."
 
-                topic_data[topic_name] = {
-                    "video": vid,
-                    "notes": notes
-                }
+                topic_entry["notes"] = notes
+                topic_data[topic_name] = topic_entry
 
-    # Ensure every wrong/unattempted question topic is present
+    # Commit once at the end for efficiency
+    db.session.commit()
+
+    # Ensure each weak topic has a topic_data entry
     for answer, question in answers:
-        if question_weak_topics.get(question.id) not in topic_data:
-            t_name = question_weak_topics.get(question.id, "General Knowledge")
-            topic_data[t_name] = topic_data.get(t_name, {"video": None, "notes": "Notes not available."})
+        tname = question_weak_topics.get(question.id)
+        if tname and tname not in topic_data:
+            topic_data[tname] = {"video": None, "notes": "Notes unavailable."}
 
-    # 4️⃣ Render template
     return render_template(
         "student/review_test.html",
         attempt=attempt,
@@ -508,6 +524,37 @@ def review_test(attempt_id):
         question_weak_topics=question_weak_topics,
         topic_data=topic_data
     )
+
+
+# ==============================
+# MARK REVIEW DONE (Synced with StudentReview)
+# ==============================
+@student_bp.route("/mark_review_done/<int:attempt_id>", methods=["POST"])
+@login_required
+def mark_review_done(attempt_id):
+    from datetime import datetime
+
+    attempt = TestAttempt.query.filter_by(id=attempt_id, student_id=current_user.id).first_or_404()
+
+    # Mark review completion
+    attempt.reviewed = True
+    attempt.review_completed_at = datetime.utcnow()
+    db.session.add(attempt)
+
+    # Save reviewed topics
+    reviewed_topics = request.form.getlist("topics[]")
+    for topic_name in reviewed_topics:
+        review_entry = StudentReview(
+            student_id=current_user.id,
+            test_id=attempt.test_id,
+            topic_name=topic_name,
+            reviewed_on=datetime.utcnow()
+        )
+        db.session.add(review_entry)
+
+    db.session.commit()
+    flash("✅ Review completed successfully! Weak topics recorded for tracking.", "success")
+    return redirect(url_for("student.dashboard"))
 
 
 # ==============================
