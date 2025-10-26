@@ -13,7 +13,7 @@ from flask_login import current_user, login_required
 from models import (
     db, Class, StudentClass, Test, Question, TestAttempt, StudentAnswer,
     AssignmentSubmission, ProctoringLog, RecommendedVideo, Topic,
-    FollowupAssignment, User,  TopicNote, TopicTrick, StudentReview
+    FollowupAssignment, User,  TopicNote, TopicTrick, StudentReview, StudentAnalytics
 )
 from sqlalchemy.orm import joinedload
 
@@ -694,70 +694,70 @@ def analyze_frame():
     })
 
 # ==============================
-# FOLLOW-UP ASSIGNMENT GENERATION (Optimized)
+# ADVANCED FOLLOW-UP ASSIGNMENT SYSTEM
 # ==============================
-
 @student_bp.route("/followup_assignment/<int:attempt_id>", methods=["GET", "POST"])
 @login_required
 def followup_assignment(attempt_id):
     import traceback
+    from sqlalchemy.exc import IntegrityError
 
+    # --------------------------
+    # 1️⃣ Fetch test attempt
+    # --------------------------
     attempt = TestAttempt.query.filter_by(id=attempt_id, student_id=current_user.id).first_or_404()
-    generation_error = None
 
     # --------------------------
-    # 1️⃣ Identify weak topics from wrong answers
+    # 2️⃣ Fetch existing follow-ups
     # --------------------------
-    wrong_answers = [ans for ans in attempt.answers if not ans.is_correct]
-    weak_topic_names = set()
-
-    for ans in wrong_answers:
-        try:
-            # ✅ Use existing DB topic if available
-            if ans.question.topic:
-                weak_topic_names.add(ans.question.topic.name)
-            else:
-                # ✅ Try to derive a short topic name efficiently (low token usage)
-                question_text = ans.question.text[:100]  # truncate long questions
-                response = client.models.generate_content(
-                    model="gemini-2.0-flash",  # cheaper + lighter
-                    contents=f"""
-                    Generate a concise topic name (1–3 words max) for this question:
-                    "{question_text}"
-                    Return only the topic name, no explanation.
-                    """
-                )
-                topic_name = response.text.strip().replace("Topic:", "").strip()
-                if topic_name:
-                    weak_topic_names.add(topic_name)
-        except Exception as e:
-            print("Error generating topic:", traceback.format_exc())
-            generation_error = str(e)
-            continue
-
-    weak_topic_names = list(weak_topic_names)
-
-    # --------------------------
-    # 2️⃣ Retrieve existing follow-ups or generate new ones
-    # --------------------------
-    followups = FollowupAssignment.query.filter_by(
+    existing_followups = FollowupAssignment.query.filter_by(
         student_id=current_user.id, attempt_id=attempt.id
     ).all()
 
-    if not followups and weak_topic_names:
-        print(f"🧩 Generating {len(weak_topic_names)} follow-up questions...")
-        generated_followups = []
+    generation_error = None
 
-        for topic_name in weak_topic_names:
+    # --------------------------
+    # 3️⃣ Generate follow-ups if none exist
+    # --------------------------
+    if not existing_followups:
+        weak_topics = {}
+        wrong_answers = [ans for ans in attempt.answers if not ans.is_correct]
+
+        for ans in wrong_answers:
             try:
-                # ✅ Get or create topic once
+                topic_name = ans.question.topic or ans.question.ai_topic.name if ans.question.ai_topic else None
+
+                # Generate topic name if missing
+                if not topic_name:
+                    question_text = ans.question.text[:100]
+                    response = client.models.generate_content(
+                        model="gemini-2.0-flash",
+                        contents=f"""
+                        Generate a concise topic name (1–3 words max) for this question:
+                        "{question_text}"
+                        Return only the topic name.
+                        """
+                    )
+                    topic_name = response.text.strip().replace("Topic:", "").strip()
+
+                if topic_name:
+                    weak_topics.setdefault(topic_name, []).append(ans.id)
+            except Exception as e:
+                print("Weak topic generation error:", traceback.format_exc())
+                generation_error = str(e)
+                continue
+
+        # Generate one MCQ per weak topic
+        generated_followups = []
+        for topic_name, question_ids in weak_topics.items():
+            try:
                 topic = Topic.query.filter_by(name=topic_name).first()
                 if not topic:
                     topic = Topic(name=topic_name)
                     db.session.add(topic)
                     db.session.commit()
 
-                # ✅ Generate only ONE high-quality MCQ per topic
+                # Generate MCQ via AI
                 response = client.models.generate_content(
                     model="gemini-2.0-flash",
                     contents=f"""
@@ -769,12 +769,13 @@ def followup_assignment(attempt_id):
                     C) ...
                     D) ...
                     Correct Option: X
+                    Difficulty: easy/medium/hard
+                    Hint: short learning hint
                     """
                 )
-
                 text = response.text.strip()
                 lines = [l.strip() for l in text.split("\n") if l.strip()]
-                qtext, opts, correct = "", {}, ""
+                qtext, opts, correct, difficulty, hint = "", {}, "", "medium", ""
 
                 for line in lines:
                     if line.startswith("Question:"):
@@ -783,6 +784,10 @@ def followup_assignment(attempt_id):
                         opts[line[0]] = line[2:].strip()
                     elif "Correct Option" in line:
                         correct = line.split(":")[-1].strip()
+                    elif "Difficulty" in line:
+                        difficulty = line.split(":")[-1].strip()
+                    elif "Hint" in line:
+                        hint = line.split(":", 1)[-1].strip()
 
                 if qtext and opts and correct:
                     fa = FollowupAssignment(
@@ -791,50 +796,100 @@ def followup_assignment(attempt_id):
                         topic_id=topic.id,
                         question_text=qtext,
                         options=opts,
-                        correct_answer=correct
+                        correct_answer=correct,
+                        ai_hint=hint,
+                        difficulty=difficulty
                     )
                     db.session.add(fa)
                     generated_followups.append(fa)
-
             except Exception as e:
                 print("Follow-up generation error:", traceback.format_exc())
                 generation_error = str(e)
                 continue
 
-        db.session.commit()
-        print(f"✅ Generated {len(generated_followups)} follow-up questions total.")
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            generation_error = "Follow-up generation failed due to DB integrity."
+
         return redirect(url_for("student.followup_assignment", attempt_id=attempt.id))
 
     # --------------------------
-    # 3️⃣ Handle submission
+    # 4️⃣ Handle submission of follow-ups
     # --------------------------
     if request.method == "POST":
         total = 0
         correct_count = 0
-        for fa in followups:
+        improved_topics = {}
+        remaining_weak_topics = {}
+
+        for fa in existing_followups:
             submitted = request.form.get(f"followup_{fa.id}")
             fa.student_answer = submitted
             fa.is_attempted = bool(submitted)
             fa.is_correct = submitted == fa.correct_answer
+
+            topic_name = fa.topic.name if fa.topic else "Unknown"
+
+            # Track improvement
+            improved_topics.setdefault(topic_name, {"previous_incorrect": 0, "improved": 0})
+
+            # Count previous wrong answers related to topic
+            related_wrong = TestAttempt.query.join(StudentAnswer).join(Question).filter(
+                TestAttempt.id == attempt.id,
+                Question.topic == topic_name,
+                StudentAnswer.is_correct == False
+            ).count()
+            improved_topics[topic_name]["previous_incorrect"] = related_wrong
+
             if fa.is_correct:
                 correct_count += 1
-            total += 1
-        db.session.commit()
+                improved_topics[topic_name]["improved"] += 1
+            else:
+                # Track remaining weak topics
+                remaining_weak_topics.setdefault(topic_name, {"questions_missed": []})
+                remaining_weak_topics[topic_name]["questions_missed"].append(fa.id)
 
+            total += 1
+
+        # Update attempt
         attempt.followup_score = round((correct_count / total) * 100, 2) if total else 0
         attempt.followup_attempted = True
+        attempt.topic_performance = improved_topics
+        attempt.weak_topics_after_followup = remaining_weak_topics
         db.session.commit()
+
+        # Update analytics
+        analytics = StudentAnalytics.query.filter_by(
+            student_id=current_user.id,
+            class_id=attempt.test.chapter.class_id
+        ).first()
+        if analytics:
+            if not analytics.followup_progress:
+                analytics.followup_progress = {}
+            for topic, data in improved_topics.items():
+                analytics.followup_progress[topic] = {
+                    "attempted": data["previous_incorrect"] + data["improved"],
+                    "correct": data["improved"],
+                    "improvement": round((data["improved"] / max(data["previous_incorrect"], 1)) * 100, 2)
+                }
+            analytics.remaining_weak_topics = remaining_weak_topics
+            analytics.last_updated = datetime.utcnow()
+            db.session.commit()
 
         flash(f"✅ Follow-up submitted! Improvement Score: {attempt.followup_score}%", "success")
         return redirect(url_for("student.followup_assignment", attempt_id=attempt.id))
 
     # --------------------------
-    # 4️⃣ Render the page
+    # 5️⃣ Render follow-up page
     # --------------------------
     return render_template(
         "student/followup_assignment.html",
         attempt=attempt,
-        followups=followups,
-        weak_topics=weak_topic_names,
-        generation_error=generation_error
+        followups=existing_followups,
+        weak_topics=[fa.topic.name for fa in existing_followups] if existing_followups else [],
+        generation_error=generation_error,
+        hints={fa.id: fa.ai_hint for fa in existing_followups},
+        difficulties={fa.id: fa.difficulty for fa in existing_followups}
     )

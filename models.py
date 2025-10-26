@@ -20,6 +20,10 @@ class User(db.Model, UserMixin):
     assignment_submissions = db.relationship("AssignmentSubmission", backref="student", lazy=True)
     enrolled_classes = db.relationship("StudentClass", back_populates="student", lazy=True)
     followup_assignments = db.relationship("FollowupAssignment", backref="student", lazy=True)
+    analytics = db.relationship("StudentAnalytics", backref="student", lazy=True)
+    reviews = db.relationship("StudentReview", back_populates="student", lazy=True)
+
+
 
     def __repr__(self):
         return f"<User {self.name} ({self.role})>"
@@ -132,6 +136,10 @@ class TestAttempt(db.Model):
     review_completed_at = db.Column(db.DateTime, nullable=True)
     followup_score = db.Column(db.Float, default=None)
     followup_attempted = db.Column(db.Boolean, default=False)
+    topic_time = db.Column(db.JSON, nullable=True)  # time spent per topic
+    weak_topics_after_followup = db.Column(db.JSON, nullable=True)
+   
+
 
     answers = db.relationship("StudentAnswer", backref="attempt", lazy=True, cascade="all, delete-orphan")
     followup_assignments = db.relationship("FollowupAssignment", backref="attempt", lazy=True, cascade="all, delete-orphan")
@@ -236,11 +244,16 @@ class StudentAnalytics(db.Model):
     weak_topics = db.Column(db.JSON, nullable=True)
     strong_topics = db.Column(db.JSON, nullable=True)
     predicted_weak_topics = db.Column(db.JSON, nullable=True)
-    history = db.Column(db.JSON, nullable=True)
+    history = db.Column(db.JSON, nullable=True)  # keeps track of every attempt & improvement
     last_updated = db.Column(db.DateTime, default=datetime.utcnow)
+    topic_time = db.Column(db.JSON, nullable=True)          # time per topic across attempts
+    followup_progress = db.Column(db.JSON, nullable=True)   # {"Algebra":{"attempted":2,"correct":1,"improvement":20}}
+    learning_gaps = db.Column(db.JSON, nullable=True)       # {"Algebra":"Needs extra practice on quadratic equations"}
+
 
     def __repr__(self):
         return f"<Analytics student={self.student_id} class={self.class_id}>"
+
 
 
 # ==========================
@@ -340,6 +353,9 @@ class FollowupAssignment(db.Model):
     is_attempted = db.Column(db.Boolean, default=False)
     student_answer = db.Column(db.String(1), nullable=True)
     is_correct = db.Column(db.Boolean, default=False)
+    ai_hint = db.Column(db.Text, nullable=True)
+    difficulty = db.Column(db.String(20), nullable=True)  # easy, medium, hard
+
 
     def __repr__(self):
         return f"<FollowupAssignment student={self.student_id} topic={self.topic_id} attempt={self.attempt_id}>"
@@ -384,8 +400,16 @@ class StudentReview(db.Model):
     topic_name = db.Column(db.String(150), nullable=False)
     reviewed_on = db.Column(db.DateTime, default=datetime.utcnow)
 
-    student = db.relationship("User", backref="reviews", lazy=True)
     test = db.relationship("Test", backref="reviews", lazy=True)
+    wrong_questions = db.Column(db.JSON, nullable=True)
+    followup_assigned = db.Column(db.Boolean, default=False)
+    followup_results = db.Column(db.JSON, nullable=True)
+    remaining_weak_topics = db.Column(db.JSON, nullable=True)
+
+    student = db.relationship("User", back_populates="reviews", lazy=True)
+
+
+
 
     def __repr__(self):
         return f"<StudentReview student={self.student_id} topic={self.topic_name}>"

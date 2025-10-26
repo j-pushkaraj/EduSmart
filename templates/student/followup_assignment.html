@@ -24,30 +24,72 @@
     </div>
     {% endif %}
 
+    <!-- Display remaining weak topics after submission -->
+    {% if attempt.followup_attempted and attempt.weak_topics_after_followup %}
+    <div class="bg-yellow-50 border border-yellow-300 rounded-lg p-4 mb-6">
+        <h2 class="text-yellow-800 font-semibold mb-2">⚠️ Topics Still Weak:</h2>
+        <ul class="list-disc list-inside text-yellow-700">
+            {% for topic, data in attempt.weak_topics_after_followup.items() %}
+            <li>{{ topic }} ({{ data.questions_missed|length }} question{{ "s" if data.questions_missed|length > 1 else "" }} missed)</li>
+            {% endfor %}
+        </ul>
+        <p class="text-sm text-yellow-700 mt-1 italic">Focus on these topics to improve further.</p>
+    </div>
+    {% endif %}
+
     <!-- Follow-ups or Loading -->
     {% if weak_topics %}
         {% if followups %}
         <form method="POST" class="space-y-6">
             {% for fa in followups %}
             <div class="p-5 border rounded-lg shadow-sm hover:shadow-md transition bg-white">
-                <p class="font-semibold mb-3">Q{{ loop.index }}: {{ fa.question_text }}</p>
+                <div class="flex justify-between items-center mb-3">
+                    <p class="font-semibold">Q{{ loop.index }}: {{ fa.question_text }}</p>
+                    {% if fa.difficulty %}
+                        <span class="px-2 py-1 text-xs font-medium rounded bg-gray-200 text-gray-700">
+                            {{ fa.difficulty|capitalize }}
+                        </span>
+                    {% endif %}
+                </div>
+                
                 <div class="space-y-2">
                     {% for key, value in fa.options.items() %}
-                    <label class="flex items-center space-x-2 cursor-pointer">
+                        {% set is_selected = fa.student_answer == key %}
+                        {% set is_correct = key == fa.correct_answer %}
+                        {% set classes = "" %}
+
+                        {% if attempt.followup_attempted %}
+                            {% if is_correct %}
+                                {% set classes = "bg-green-100 border-green-400 text-green-800" %}
+                            {% elif is_selected and not is_correct %}
+                                {% set classes = "bg-red-100 border-red-400 text-red-800" %}
+                            {% endif %}
+                        {% endif %}
+
+                    <label class="flex items-center space-x-2 cursor-pointer p-2 border rounded {{ classes }}">
                         <input type="radio" name="followup_{{ fa.id }}" value="{{ key }}"
                                {% if fa.student_answer == key %} checked {% endif %}
-                               class="form-radio text-purple-600 focus:ring-purple-500">
+                               class="form-radio text-purple-600 focus:ring-purple-500"
+                               {% if attempt.followup_attempted %} disabled {% endif %}>
                         <span>{{ key }}) {{ value }}</span>
                     </label>
                     {% endfor %}
                 </div>
+
+                {% if fa.ai_hint %}
+                <p class="mt-2 text-sm text-gray-500 italic">
+                    💡 Hint: {{ fa.ai_hint }}
+                </p>
+                {% endif %}
             </div>
             {% endfor %}
 
+            {% if not attempt.followup_attempted %}
             <button type="submit"
                     class="px-5 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition">
                 ✅ Submit Follow-up
             </button>
+            {% endif %}
         </form>
 
         {% else %}
