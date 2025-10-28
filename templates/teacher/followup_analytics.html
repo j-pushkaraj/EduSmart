@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Follow-up Analytics — {{ followup.name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-6 py-10 space-y-8">
+
+  <!-- Header -->
+  <div class="flex justify-between items-center">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-800">🔁 Follow-up Analytics — {{ followup.name }}</h1>
+      <p class="text-gray-500 text-sm mt-1">
+        Class: {{ followup.class_.name }} • Test: {{ followup.test.name }}
+      </p>
+    </div>
+    <a href="{{ url_for('teacher.view_class', class_id=followup.class_id) }}"
+       class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium">
+      ← Back to Class
+    </a>
+  </div>
+
+  <!-- Summary Stats -->
+  <div class="grid grid-cols-3 gap-4">
+    <div class="bg-indigo-50 border border-indigo-100 p-4 rounded-xl">
+      <p class="text-sm text-gray-600">Average Improvement</p>
+      <p class="text-2xl font-semibold text-indigo-700">
+        {{ summary.avg_improvement if summary.avg_improvement else 0 }}%
+      </p>
+    </div>
+    <div class="bg-green-50 border border-green-100 p-4 rounded-xl">
+      <p class="text-sm text-gray-600">Highest Improvement</p>
+      <p class="text-2xl font-semibold text-green-700">
+        {{ summary.highest_improvement if summary.highest_improvement else 0 }}%
+      </p>
+    </div>
+    <div class="bg-red-50 border border-red-100 p-4 rounded-xl">
+      <p class="text-sm text-gray-600">Lowest Improvement</p>
+      <p class="text-2xl font-semibold text-red-700">
+        {{ summary.lowest_improvement if summary.lowest_improvement else 0 }}%
+      </p>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="bg-white rounded-2xl shadow border overflow-x-auto mt-6">
+    <table class="min-w-full text-sm text-gray-600">
+      <thead class="bg-gray-100 text-left">
+        <tr>
+          <th class="py-3 px-4 font-semibold text-gray-700">Student</th>
+          <th class="py-3 px-4 font-semibold text-gray-700">Test Score</th>
+          <th class="py-3 px-4 font-semibold text-gray-700">Follow-up Score</th>
+          <th class="py-3 px-4 font-semibold text-gray-700">Improvement</th>
+          <th class="py-3 px-4 font-semibold text-gray-700">Weak Topics</th>
+          <th class="py-3 px-4 font-semibold text-gray-700">Improved Topics</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in followup_data %}
+        <tr class="border-b hover:bg-gray-50 transition-colors">
+          <td class="py-3 px-4 font-medium text-gray-900">{{ s.student_name }}</td>
+          <td class="py-3 px-4">{{ s.test_score }}%</td>
+          <td class="py-3 px-4">{{ s.followup_score }}%</td>
+          <td class="py-3 px-4">
+            {% if s.improvement > 0 %}
+              <span class="text-green-600 font-medium">+{{ s.improvement }}%</span>
+            {% elif s.improvement < 0 %}
+              <span class="text-red-600 font-medium">{{ s.improvement }}%</span>
+            {% else %}
+              <span class="text-gray-600">{{ s.improvement }}%</span>
+            {% endif %}
+          </td>
+          <td class="py-3 px-4 text-red-600">
+            {{ s.weak_topics|join(', ') if s.weak_topics else '—' }}
+          </td>
+          <td class="py-3 px-4 text-green-600">
+            {{ s.improved_topics|join(', ') if s.improved_topics else '—' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}

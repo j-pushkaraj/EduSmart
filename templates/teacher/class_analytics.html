@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Class Analytics - {{ class_obj.name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-6 py-10 space-y-8">
+
+  <!-- Header -->
+  <div class="flex justify-between items-center">
+    <h1 class="text-3xl font-semibold text-gray-800 flex items-center gap-2">
+      <span>📈</span> Class Analytics - {{ class_obj.name }}
+    </h1>
+    <a href="{{ url_for('teacher.view_class', class_id=class_obj.id) }}"
+       class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium transition">
+      ← Back to Class
+    </a>
+  </div>
+
+  <!-- Overview Cards -->
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="bg-blue-50 p-5 rounded-xl shadow-sm text-center border border-blue-100">
+      <p class="text-xs text-gray-500 uppercase tracking-wide">Total Students</p>
+      <p class="text-2xl font-bold text-blue-700 mt-1">{{ total_students }}</p>
+    </div>
+    <div class="bg-green-50 p-5 rounded-xl shadow-sm text-center border border-green-100">
+      <p class="text-xs text-gray-500 uppercase tracking-wide">Average Score</p>
+      <p class="text-2xl font-bold text-green-700 mt-1">{{ avg_score }}%</p>
+    </div>
+    <div class="bg-yellow-50 p-5 rounded-xl shadow-sm text-center border border-yellow-100">
+      <p class="text-xs text-gray-500 uppercase tracking-wide">Most Common Weak Topic</p>
+      <p class="text-base font-semibold text-yellow-700 mt-1">{{ weakest_topic or 'N/A' }}</p>
+    </div>
+    <div class="bg-purple-50 p-5 rounded-xl shadow-sm text-center border border-purple-100">
+      <p class="text-xs text-gray-500 uppercase tracking-wide">Students Who Attempted Tests</p>
+      <p class="text-2xl font-bold text-purple-700 mt-1">{{ total_students - not_attempted_students|length }}</p>
+    </div>
+  </div>
+
+  <!-- Weak Topics Summary -->
+  <div class="bg-white rounded-2xl shadow border p-6">
+    <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+      <span>📉</span> Weak Topics Overview
+    </h2>
+    {% if weakest_topic != 'N/A' %}
+      <p class="text-gray-700 text-sm">
+        <span class="font-semibold text-yellow-700">{{ weakest_topic }}</span> is the most challenging topic for this class.
+      </p>
+    {% else %}
+      <p class="text-gray-500 text-sm">No weak topics identified yet.</p>
+    {% endif %}
+  </div>
+
+  <!-- Students Who Haven’t Attempted -->
+  <div class="bg-white rounded-2xl shadow border p-6">
+    <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+      <span>🚫</span> Students Who Haven’t Attempted Any Test
+    </h2>
+    {% if not_attempted_students %}
+      <ul class="list-disc pl-6 text-sm text-gray-700 space-y-1">
+        {% for name in not_attempted_students %}
+        <li>{{ name }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-gray-500 text-sm">🎉 All students have attempted at least one test!</p>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

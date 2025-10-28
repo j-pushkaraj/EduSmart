@@ -3,7 +3,10 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from extensions import db
-from models import Class, Chapter, Test, Question, TestAttempt, StudentAnswer, User, StudentClass
+from models import (
+    Class, Chapter, Test, Question, TestAttempt, StudentAnswer, User, StudentClass,
+    FollowupAssignment
+)
 from datetime import datetime
 
 teacher_bp = Blueprint("teacher", __name__, url_prefix="/teacher")
@@ -256,6 +259,19 @@ def delete_test(test_id):
     return redirect(url_for("teacher.view_class", class_id=class_id))
 
 
+## ================================
+# 📘 teacher.py — Updated Analytics Routes
+# ================================
+
+from flask import Blueprint, render_template, redirect, url_for, flash
+from flask_login import login_required, current_user
+from extensions import db
+from models import (
+    User, Class, StudentClass, Test, Chapter, Question, Topic,
+    TestAttempt, StudentAnswer, FollowupAssignment
+)
+
+
 # ================================
 # ✅ STUDENT ANALYTICS
 # ================================
@@ -288,16 +304,15 @@ def class_students(class_id):
         total_score = sum(a.score for a in attempts if a.score is not None)
         avg_score = round(total_score / total_attempts, 2) if total_attempts else 0
 
-        weak_topics = []
-        strong_topics = []
+        weak_topics, strong_topics = [], []
 
         for attempt in attempts:
             for ans in attempt.answers:
-                if ans.question.topic:
+                if ans.question and ans.question.topic:
                     if ans.is_correct:
-                        strong_topics.append(ans.question.topic)
+                        strong_topics.append(ans.question.topic.name)
                     else:
-                        weak_topics.append(ans.question.topic)
+                        weak_topics.append(ans.question.topic.name)
 
         student_analytics.append({
             "student": student,
@@ -313,11 +328,11 @@ def class_students(class_id):
         student_analytics=student_analytics
     )
 
-
 # ================================
-# ✅ ANALYTICS HELPERS
+# 📊 ANALYTICS HELPERS
 # ================================
 def get_test_analytics(test_id):
+    """Compute average, highest, lowest score for a test."""
     attempts = TestAttempt.query.filter_by(test_id=test_id).all()
     if not attempts:
         return {"avg": 0, "highest": 0, "lowest": 0, "count": 0}
@@ -336,22 +351,246 @@ def get_test_analytics(test_id):
 
 
 def get_chapter_analytics(chapter_id):
+    """Get average and lowest-performing test within a chapter."""
     tests = Test.query.filter_by(chapter_id=chapter_id).all()
     if not tests:
         return {"avg": 0, "lowest_test": None, "total_tests": 0}
 
-    all_scores = []
-    test_scores = {}
-    for test in tests:
-        t_analytics = get_test_analytics(test.id)
-        if t_analytics["count"] > 0 and t_analytics["avg"] > 0:
-            all_scores.append(t_analytics["avg"])
-            test_scores[test.name] = t_analytics["avg"]
+    test_scores = {
+        test.name: get_test_analytics(test.id)["avg"] for test in tests
+    }
 
-    if not all_scores:
+    valid_scores = [v for v in test_scores.values() if v > 0]
+    if not valid_scores:
         return {"avg": 0, "lowest_test": None, "total_tests": len(tests)}
 
-    avg_score = round(sum(all_scores) / len(all_scores), 2)
-    lowest_test = min(test_scores, key=test_scores.get) if test_scores else None
-
+    avg_score = round(sum(valid_scores) / len(valid_scores), 2)
+    lowest_test = min(test_scores, key=test_scores.get)
     return {"avg": avg_score, "lowest_test": lowest_test, "total_tests": len(tests)}
+
+# ================================
+# 📈 CLASS ANALYTICS (Overview)
+# ================================
+@teacher_bp.route("/class/<int:class_id>/analytics")
+@login_required
+def class_analytics(class_id):
+    """Class-level overview: average, weak topics, non-attempts."""
+    class_obj = Class.query.get_or_404(class_id)
+    if class_obj.teacher_id != current_user.id:
+        flash("Unauthorized access!", "danger")
+        return redirect(url_for("teacher.dashboard"))
+
+    students = (
+        db.session.query(User)
+        .join(StudentClass)
+        .filter(StudentClass.class_id == class_id, User.role == "student")
+        .all()
+    )
+
+    tests = (
+        db.session.query(Test)
+        .join(Chapter)
+        .filter(Chapter.class_id == class_id)
+        .all()
+    )
+
+    total_score, total_attempts = 0, 0
+    weak_topics = {}
+
+    for test in tests:
+        attempts = TestAttempt.query.filter_by(test_id=test.id).all()
+        for attempt in attempts:
+            if attempt.score:
+                total_score += attempt.score
+                total_attempts += 1
+            for ans in attempt.answers:
+                if not ans.is_correct and ans.question and ans.question.topic:
+                    topic_name = ans.question.topic.name
+                    weak_topics[topic_name] = weak_topics.get(topic_name, 0) + 1
+
+    avg_score = round(total_score / total_attempts, 2) if total_attempts else 0
+    weakest_topic = max(weak_topics, key=weak_topics.get) if weak_topics else "N/A"
+
+    attempted_ids = [
+        a.student_id for a in db.session.query(TestAttempt)
+        .join(Test).join(Chapter)
+        .filter(Chapter.class_id == class_id)
+        .distinct()
+    ]
+    not_attempted_students = [s.name for s in students if s.id not in attempted_ids]
+
+    return render_template(
+        "teacher/class_analytics.html",
+        class_obj=class_obj,
+        total_students=len(students),
+        avg_score=avg_score,
+        weakest_topic=weakest_topic,
+        not_attempted_students=not_attempted_students
+    )
+
+# ================================
+# 🧩 DETAILED TEST REPORT HELPERS
+# ================================
+
+from sqlalchemy.orm import aliased
+
+def find_weakest_topic(test_id):
+    try:
+        QuestionAlias = aliased(Question)
+        answers = (
+            StudentAnswer.query
+            .join(QuestionAlias, StudentAnswer.question_id == QuestionAlias.id)
+            .filter(StudentAnswer.test_id == test_id, StudentAnswer.is_correct == False)
+            .all()
+        )
+
+        if not answers:
+            return None
+
+        topic_count = {}
+        for ans in answers:
+            if ans.question and ans.question.topic:
+                topic = ans.question.topic.name
+                topic_count[topic] = topic_count.get(topic, 0) + 1
+
+        weakest_topic = max(topic_count, key=topic_count.get) if topic_count else None
+        return weakest_topic
+    except Exception as e:
+        print(f"⚠️ Weakest topic computation failed: {e}")
+        return None
+
+
+
+def generate_detailed_test_report(test_id):
+    """Generate advanced performance and improvement report for a test."""
+    test = Test.query.get_or_404(test_id)
+    class_obj = Class.query.get(test.chapter.class_id)
+
+    students = (
+        db.session.query(User)
+        .join(StudentClass)
+        .filter(StudentClass.class_id == class_obj.id, User.role == "student")
+        .all()
+    )
+    attempts = TestAttempt.query.filter_by(test_id=test.id).all()
+
+    total_students = len(students)
+    attempted_ids = [a.student_id for a in attempts]
+    not_attempted = [s for s in students if s.id not in attempted_ids]
+
+    scores = [a.score for a in attempts if a.score is not None]
+    avg_score = round(sum(scores) / len(scores), 2) if scores else 0
+    highest_score = max(scores) if scores else 0
+    lowest_score = min(scores) if scores else 0
+
+    student_reports = []
+
+    for student in students:
+        attempt = next((a for a in attempts if a.student_id == student.id), None)
+        if not attempt:
+            student_reports.append({
+                "student": student.name,
+                "score": None,
+                "percent": None,
+                "weak_topics": [],
+                "improvement": None,
+                "category": "Not Attempted",
+                "followup_score": None,
+                "weak_topics_after_followup": [],
+            })
+            continue
+
+        score = attempt.score or 0
+        percent = (score / test.max_score) * 100 if test.max_score else 0
+
+        wrong_answers = StudentAnswer.query.join(Question).filter(
+            StudentAnswer.attempt_id == attempt.id,
+            StudentAnswer.is_correct == False
+        ).all()
+
+        weak_topics = list({
+            ans.question.topic.name
+            for ans in wrong_answers
+            if ans.question and getattr(ans.question, "topic", None)
+        })
+
+        followup = FollowupAssignment.query.filter_by(student_id=student.id).first()
+
+        followup_score, weak_after, improvement = None, [], 0
+
+        if followup:
+            # handle whichever field exists
+            followup_score = getattr(followup, "score", None) or getattr(followup, "marks", None) or 0
+            improved_topics = getattr(followup, "improved_topics", "")
+            weak_after = improved_topics.split(",") if improved_topics else []
+            if followup_score:
+                improvement = round(followup_score - score, 2)
+
+        if percent >= 85:
+            category = "Fast Learner"
+        elif percent >= 50:
+            category = "Average Learner"
+        else:
+            category = "Slow Learner"
+
+        student_reports.append({
+            "student": student.name,
+            "score": score,
+            "percent": round(percent, 2),
+            "weak_topics": weak_topics,
+            "improvement": improvement,
+            "followup_score": followup_score,
+            "weak_topics_after_followup": weak_after,
+            "category": category,
+        })
+
+    improvements = [r for r in student_reports if r["improvement"] is not None]
+    highest_improvement = max(improvements, key=lambda x: x["improvement"], default=None)
+    lowest_improvement = min(improvements, key=lambda x: x["improvement"], default=None)
+
+    return {
+        "summary": {
+            "total_students": total_students,
+            "attempted": len(attempts),
+            "not_attempted": len(not_attempted),
+            "avg_score": avg_score,
+            "highest_score": highest_score,
+            "lowest_score": lowest_score,
+            "weakest_topic_overall": find_weakest_topic(test.id),
+        },
+        "students": student_reports,
+        "highest_improvement": highest_improvement,
+        "lowest_improvement": lowest_improvement,
+        "not_attempted_students": [s.name for s in not_attempted]
+    }
+
+
+# ================================
+# 📊 TEST ANALYTICS (Detailed Report View)
+# ================================
+@teacher_bp.route("/test/<int:test_id>/analytics")
+@login_required
+def test_analytics(test_id):
+    """Detailed analytics dashboard for a test."""
+    test = Test.query.get_or_404(test_id)
+    class_obj = Class.query.get(test.chapter.class_id)
+
+    # ✅ Authorization check
+    if class_obj.teacher_id != current_user.id:
+        flash("Unauthorized access!", "danger")
+        return redirect(url_for("teacher.dashboard"))
+
+    # ✅ Generate the detailed report safely
+    report = generate_detailed_test_report(test_id)
+
+    return render_template(
+        "teacher/test_analytics.html",
+        test=test,
+        report=report, 
+        class_obj=class_obj,
+        summary=report["summary"],
+        student_reports=report["students"],
+        highest_improvement=report["highest_improvement"],
+        lowest_improvement=report["lowest_improvement"],
+        not_attempted_students=report["not_attempted_students"]
+    )

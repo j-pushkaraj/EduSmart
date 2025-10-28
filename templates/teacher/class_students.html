@@ -1,51 +1,94 @@
 {% extends "base.html" %}
-
-{% block title %}Students - {{ class_obj.name }}{% endblock %}
+{% block title %}Class Students - {{ class_obj.name }}{% endblock %}
 
 {% block content %}
-<div class="max-w-5xl mx-auto px-6 py-10">
-    <h1 class="text-2xl font-bold text-gray-800 mb-6">
-        Students in {{ class_obj.name }}
+<div class="max-w-7xl mx-auto px-6 py-10 space-y-8">
+
+  <!-- Header -->
+  <div class="flex justify-between items-center">
+    <h1 class="text-3xl font-semibold text-gray-800 flex items-center gap-2">
+      <span>📊</span> Student Performance - {{ class_obj.name }}
     </h1>
+    <a href="{{ url_for('teacher.view_class', class_id=class_obj.id) }}"
+       class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium transition">
+      ← Back to Class
+    </a>
+  </div>
 
-    {% if student_analytics %}
-        <table class="w-full border-collapse border border-gray-200 text-sm">
-            <thead class="bg-gray-100 text-left">
-                <tr>
-                    <th class="border p-3">Name</th>
-                    <th class="border p-3">Email</th>
-                    <th class="border p-3">Attempts</th>
-                    <th class="border p-3">Avg. Score</th>
-                    <th class="border p-3">Weak Topics</th>
-                    <th class="border p-3">Strong Topics</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for data in student_analytics %}
-                <tr class="hover:bg-gray-50">
-                    <td class="border p-3">{{ data.student.name }}</td>
-                    <td class="border p-3">{{ data.student.email }}</td>
-                    <td class="border p-3">{{ data.total_attempts }}</td>
-                    <td class="border p-3">{{ data.avg_score }}%</td>
-                    <td class="border p-3 text-red-600">
-                        {{ data.weak_topics|join(", ") if data.weak_topics else "-" }}
-                    </td>
-                    <td class="border p-3 text-green-600">
-                        {{ data.strong_topics|join(", ") if data.strong_topics else "-" }}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% else %}
-        <p class="text-gray-500">No students have joined this class yet.</p>
-    {% endif %}
-
-    <div class="mt-6">
-        <a href="{{ url_for('teacher.view_class', class_id=class_obj.id) }}" 
-           class="inline-block px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300">
-            ← Back to Class
-        </a>
+  <!-- Summary Analytics -->
+  <div class="grid md:grid-cols-4 sm:grid-cols-2 gap-4">
+    <div class="bg-white shadow rounded-xl p-4 border text-center">
+      <h3 class="text-sm text-gray-500 font-medium">Total Students</h3>
+      <p class="text-2xl font-semibold text-gray-800 mt-1">{{ students|length }}</p>
     </div>
+    <div class="bg-white shadow rounded-xl p-4 border text-center">
+      <h3 class="text-sm text-gray-500 font-medium">Average Score</h3>
+      <p class="text-2xl font-semibold text-blue-600 mt-1">{{ class_avg_score or '—' }}%</p>
+    </div>
+    <div class="bg-white shadow rounded-xl p-4 border text-center">
+      <h3 class="text-sm text-gray-500 font-medium">Highest Improvement</h3>
+      <p class="text-2xl font-semibold text-green-600 mt-1">{{ top_improvement.name if top_improvement else '—' }}</p>
+    </div>
+    <div class="bg-white shadow rounded-xl p-4 border text-center">
+      <h3 class="text-sm text-gray-500 font-medium">Lowest Improvement</h3>
+      <p class="text-2xl font-semibold text-red-600 mt-1">{{ low_improvement.name if low_improvement else '—' }}</p>
+    </div>
+  </div>
+
+  <!-- Student Performance Table -->
+  <div class="overflow-x-auto bg-white rounded-2xl shadow border mt-6">
+    <table class="min-w-full text-sm text-gray-700">
+      <thead class="bg-gray-100 text-left text-gray-700 uppercase text-xs font-semibold">
+        <tr>
+          <th class="py-3 px-4">Student</th>
+          <th class="py-3 px-4">Avg Test Score</th>
+          <th class="py-3 px-4">Avg Follow-up Score</th>
+          <th class="py-3 px-4">Weak Topics</th>
+          <th class="py-3 px-4">Improvement</th>
+          <th class="py-3 px-4">Category</th>
+          <th class="py-3 px-4 text-center">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in students %}
+        <tr class="border-b hover:bg-gray-50 transition">
+          <td class="py-3 px-4 font-medium text-gray-900 flex items-center gap-2">
+            <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-semibold">
+              {{ s.name[0] }}
+            </div>
+            {{ s.name }}
+          </td>
+          <td class="py-3 px-4">{{ s.avg_test_score or '—' }}%</td>
+          <td class="py-3 px-4">{{ s.avg_followup_score or '—' }}%</td>
+          <td class="py-3 px-4 text-red-600">{{ s.weak_topics|join(', ') if s.weak_topics else '—' }}</td>
+          <td class="py-3 px-4 {% if s.improvement and s.improvement > 0 %}text-green-600{% else %}text-gray-500{% endif %}">
+            {{ s.improvement or '—' }}%
+          </td>
+          <td class="py-3 px-4">
+            {% if s.category == 'Fast' %}
+              <span class="bg-green-100 text-green-800 px-2 py-0.5 rounded text-xs font-medium">Fast Learner</span>
+            {% elif s.category == 'Average' %}
+              <span class="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-xs font-medium">Average</span>
+            {% else %}
+              <span class="bg-red-100 text-red-800 px-2 py-0.5 rounded text-xs font-medium">Needs Improvement</span>
+            {% endif %}
+          </td>
+          <td class="py-3 px-4 text-center">
+            <a href="{{ url_for('teacher.student_report', student_id=s.id, class_id=class_obj.id) }}"
+               class="text-indigo-600 hover:underline font-medium">View Report →</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Empty State -->
+  {% if students|length == 0 %}
+  <div class="text-center py-12 bg-white rounded-xl shadow-sm border">
+    <p class="text-gray-500">No students found in this class yet.</p>
+  </div>
+  {% endif %}
+
 </div>
 {% endblock %}

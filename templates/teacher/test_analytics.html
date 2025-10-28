@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-6 py-10">
+  <!-- Header -->
+  <div class="mb-8">
+    <h1 class="text-3xl font-semibold text-gray-800 mb-2">
+      📈 Test Analytics - {{ test.title }}
+    </h1>
+    <p class="text-gray-500">Class: {{ class_obj.name }}</p>
+    <a href="{{ url_for('teacher.view_class', class_id=class_obj.id) }}"
+       class="inline-block mt-3 text-blue-600 hover:underline">← Back</a>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+    <div class="bg-white rounded-2xl p-6 shadow text-center">
+      <p class="text-gray-500 text-sm uppercase">Total Students</p>
+      <h2 class="text-3xl font-bold text-indigo-600">
+        {{ report.summary.total_students }}
+      </h2>
+    </div>
+
+    <div class="bg-white rounded-2xl p-6 shadow text-center">
+      <p class="text-gray-500 text-sm uppercase">Attempted</p>
+      <h2 class="text-3xl font-bold text-green-600">
+        {{ report.summary.attempted }}
+      </h2>
+    </div>
+
+    <div class="bg-white rounded-2xl p-6 shadow text-center">
+      <p class="text-gray-500 text-sm uppercase">Average Score</p>
+      <h2 class="text-3xl font-bold text-yellow-600">
+        {{ report.summary.avg_score }}%
+      </h2>
+    </div>
+
+    <div class="bg-white rounded-2xl p-6 shadow text-center">
+      <p class="text-gray-500 text-sm uppercase">Weakest Topic</p>
+      <h2 class="text-2xl font-semibold text-red-600">
+        {% if report.summary.weakest_topic_overall %}
+          {{ report.summary.weakest_topic_overall }}
+        {% else %}
+          N/A
+        {% endif %}
+      </h2>
+    </div>
+  </div>
+
+  <!-- Student Performance Table -->
+  <div class="bg-white rounded-2xl shadow overflow-hidden mb-12">
+    <div class="px-6 py-4 border-b">
+      <h2 class="text-xl font-semibold text-gray-700">📊 Student Performance</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-left text-sm text-gray-700">
+        <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
+          <tr>
+            <th class="px-6 py-3">Student</th>
+            <th class="px-6 py-3 text-center">Score</th>
+            <th class="px-6 py-3 text-center">Category</th>
+            <th class="px-6 py-3">Weak Topics</th>
+            <th class="px-6 py-3 text-center">Follow-up Score</th>
+            <th class="px-6 py-3 text-center">Improvement</th>
+            <th class="px-6 py-3">Weak Topics After Follow-up</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in report.students %}
+          {% if s.score is not none %}
+          <tr class="border-b hover:bg-gray-50">
+            <td class="px-6 py-3 font-medium">{{ s.student }}</td>
+            <td class="px-6 py-3 text-center">{{ s.score }}</td>
+            <td class="px-6 py-3 text-center">
+              {% if s.category == 'Fast Learner' %}
+                <span class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-semibold">
+                  {{ s.category }}
+                </span>
+              {% elif s.category == 'Average Learner' %}
+                <span class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs font-semibold">
+                  {{ s.category }}
+                </span>
+              {% else %}
+                <span class="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-semibold">
+                  {{ s.category }}
+                </span>
+              {% endif %}
+            </td>
+            <td class="px-6 py-3">
+              {% if s.weak_topics %}
+                {{ s.weak_topics | join(', ') }}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td class="px-6 py-3 text-center">
+              {% if s.followup_score %}
+                {{ s.followup_score }}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td class="px-6 py-3 text-center">
+              {% if s.improvement is not none %}
+                {{ s.improvement }}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td class="px-6 py-3">
+              {% if s.weak_topics_after_followup %}
+                {{ s.weak_topics_after_followup | join(', ') }}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Not Attempted Students -->
+  <div class="bg-white rounded-2xl shadow p-6">
+    <h2 class="text-xl font-semibold text-gray-700 mb-3">🚫 Students Who Didn’t Attempt</h2>
+    {% if report.not_attempted_students %}
+      <div class="flex flex-wrap gap-3">
+        {% for student in report.not_attempted_students %}
+          <span class="bg-gray-100 text-gray-700 px-4 py-2 rounded-full text-sm">{{ student }}</span>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-gray-500">All students have attempted this test ✅</p>
+    {% endif %}
+  </div>
+
+  <footer class="text-center text-gray-400 text-xs mt-10">
+    ©️ 2025 EduSmart • Personalized Learning for the Future
+  </footer>
+</div>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ student.name }} - Report{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-6 py-10 space-y-8">
+
+  <div class="flex justify-between items-center">
+    <h1 class="text-2xl font-bold text-gray-800">📘 {{ student.name }} - Detailed Report</h1>
+    <a href="{{ url_for('teacher.class_students', class_id=class_obj.id) }}"
+       class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium">
+      ← Back to Students
+    </a>
+  </div>
+
+  <!-- Overview -->
+  <div class="grid grid-cols-3 gap-4">
+    <div class="bg-blue-50 p-4 rounded-xl text-center">
+      <p class="text-xs text-gray-500">Tests Attempted</p>
+      <p class="text-xl font-bold">{{ total_tests }}</p>
+    </div>
+    <div class="bg-green-50 p-4 rounded-xl text-center">
+      <p class="text-xs text-gray-500">Avg Score</p>
+      <p class="text-xl font-bold">{{ avg_score }}%</p>
+    </div>
+    <div class="bg-yellow-50 p-4 rounded-xl text-center">
+      <p class="text-xs text-gray-500">Improvement</p>
+      <p class="text-xl font-bold">{{ improvement }}%</p>
+    </div>
+  </div>
+
+  <!-- Performance Table -->
+  <div class="bg-white rounded-2xl shadow border overflow-x-auto">
+    <table class="min-w-full text-sm text-gray-600">
+      <thead class="bg-gray-100">
+        <tr>
+          <th class="py-3 px-4">Test</th>
+          <th class="py-3 px-4">Test Score</th>
+          <th class="py-3 px-4">Follow-up Score</th>
+          <th class="py-3 px-4">Weak Topics (Before)</th>
+          <th class="py-3 px-4">Weak Topics (After)</th>
+          <th class="py-3 px-4">Improvement %</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in test_reports %}
+        <tr class="border-b hover:bg-gray-50">
+          <td class="py-3 px-4 font-medium text-gray-900">{{ r.test_name }}</td>
+          <td class="py-3 px-4">{{ r.test_score or '--' }}%</td>
+          <td class="py-3 px-4">{{ r.followup_score or '--' }}%</td>
+          <td class="py-3 px-4 text-red-600">{{ r.weak_topics_before|join(', ') or '—' }}</td>
+          <td class="py-3 px-4 text-green-600">{{ r.weak_topics_after|join(', ') or '—' }}</td>
+          <td class="py-3 px-4">{{ r.improvement or '--' }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}
