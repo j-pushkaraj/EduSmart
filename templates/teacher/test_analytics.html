@@ -2,55 +2,84 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-6 py-10">
+
   <!-- Header -->
-  <div class="mb-8">
-    <h1 class="text-3xl font-semibold text-gray-800 mb-2">
-      📈 Test Analytics - {{ test.title }}
+  <div class="mb-10">
+    <h1 class="text-4xl font-bold text-gray-900 mb-2 flex items-center gap-2">
+      📈 Test Analytics
+      <span class="text-indigo-600">— {{ test.title }}</span>
     </h1>
-    <p class="text-gray-500">Class: {{ class_obj.name }}</p>
+    <p class="text-gray-500 text-lg">Class: {{ class_obj.name }}</p>
     <a href="{{ url_for('teacher.view_class', class_id=class_obj.id) }}"
-       class="inline-block mt-3 text-blue-600 hover:underline">← Back</a>
+       class="inline-block mt-3 text-blue-600 hover:underline">← Back to Class</a>
   </div>
 
   <!-- Summary Cards -->
-  <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
-    <div class="bg-white rounded-2xl p-6 shadow text-center">
-      <p class="text-gray-500 text-sm uppercase">Total Students</p>
-      <h2 class="text-3xl font-bold text-indigo-600">
-        {{ report.summary.total_students }}
+  <div class="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-4 gap-6 mb-12">
+    {% set summary = report.summary %}
+
+    {% set cards = [
+      {'label': '👩‍🎓 Total Students', 'value': summary.total_students, 'color': 'from-indigo-500 to-indigo-600'},
+      {'label': '📝 Attempted', 'value': summary.attempted, 'color': 'from-green-500 to-green-600'},
+      {'label': '📊 Average Score', 'value': summary.avg_score|string + '%', 'color': 'from-yellow-400 to-yellow-500'},
+      {'label': '⚠️ Weakest Topic', 'value': summary.weakest_topic_overall or 'N/A', 'color': 'from-red-500 to-red-600'}
+    ] %}
+
+    {% for card in cards %}
+      <div class="bg-gradient-to-br {{ card.color }} text-white rounded-2xl p-6 shadow-lg transform hover:scale-105 transition">
+        <p class="text-sm uppercase opacity-80">{{ card.label }}</p>
+        <h2 class="text-3xl font-extrabold mt-2">{{ card.value }}</h2>
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- Performance Stats -->
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+    <div class="bg-white rounded-2xl p-6 shadow text-center hover:shadow-md transition">
+      <p class="text-gray-500 text-sm uppercase">🥇 Highest Scorer</p>
+      <h2 class="text-2xl font-bold text-green-600">
+        {{ summary.highest_scorer.name if summary.highest_scorer else 'N/A' }}
       </h2>
+      <p class="text-gray-700 text-sm">
+        {{ summary.highest_score if summary.highest_score is not none else '-' }}%
+      </p>
     </div>
 
-    <div class="bg-white rounded-2xl p-6 shadow text-center">
-      <p class="text-gray-500 text-sm uppercase">Attempted</p>
-      <h2 class="text-3xl font-bold text-green-600">
-        {{ report.summary.attempted }}
+    <div class="bg-white rounded-2xl p-6 shadow text-center hover:shadow-md transition">
+      <p class="text-gray-500 text-sm uppercase">🪫 Lowest Scorer</p>
+      <h2 class="text-2xl font-bold text-red-600">
+        {{ summary.lowest_scorer.name if summary.lowest_scorer else 'N/A' }}
       </h2>
+      <p class="text-gray-700 text-sm">
+        {{ summary.lowest_score if summary.lowest_score is not none else '-' }}%
+      </p>
     </div>
 
-    <div class="bg-white rounded-2xl p-6 shadow text-center">
-      <p class="text-gray-500 text-sm uppercase">Average Score</p>
-      <h2 class="text-3xl font-bold text-yellow-600">
-        {{ report.summary.avg_score }}%
+    <div class="bg-white rounded-2xl p-6 shadow text-center hover:shadow-md transition">
+      <p class="text-gray-500 text-sm uppercase">📈 Highest Improvement</p>
+      <h2 class="text-2xl font-bold text-green-600">
+        {{ summary.highest_improvement_student.name if summary.highest_improvement_student else 'N/A' }}
       </h2>
+      <p class="text-gray-700 text-sm">
+        +{{ summary.highest_improvement if summary.highest_improvement is not none else 0 }}%
+      </p>
     </div>
 
-    <div class="bg-white rounded-2xl p-6 shadow text-center">
-      <p class="text-gray-500 text-sm uppercase">Weakest Topic</p>
-      <h2 class="text-2xl font-semibold text-red-600">
-        {% if report.summary.weakest_topic_overall %}
-          {{ report.summary.weakest_topic_overall }}
-        {% else %}
-          N/A
-        {% endif %}
+    <div class="bg-white rounded-2xl p-6 shadow text-center hover:shadow-md transition">
+      <p class="text-gray-500 text-sm uppercase">📉 Lowest Improvement</p>
+      <h2 class="text-2xl font-bold text-red-600">
+        {{ summary.lowest_improvement_student.name if summary.lowest_improvement_student else 'N/A' }}
       </h2>
+      <p class="text-gray-700 text-sm">
+        {{ summary.lowest_improvement if summary.lowest_improvement is not none else 0 }}%
+      </p>
     </div>
   </div>
 
   <!-- Student Performance Table -->
   <div class="bg-white rounded-2xl shadow overflow-hidden mb-12">
     <div class="px-6 py-4 border-b">
-      <h2 class="text-xl font-semibold text-gray-700">📊 Student Performance</h2>
+      <h2 class="text-xl font-semibold text-gray-700">📊 Student Performance Breakdown</h2>
     </div>
     <div class="overflow-x-auto">
       <table class="min-w-full text-left text-sm text-gray-700">
@@ -68,52 +97,30 @@
         <tbody>
           {% for s in report.students %}
           {% if s.score is not none %}
-          <tr class="border-b hover:bg-gray-50">
-            <td class="px-6 py-3 font-medium">{{ s.student }}</td>
-            <td class="px-6 py-3 text-center">{{ s.score }}</td>
+          <tr class="border-b hover:bg-gray-50 transition">
+            <td class="px-6 py-3 font-medium text-gray-800">{{ s.student }}</td>
+            <td class="px-6 py-3 text-center font-semibold">{{ s.score }}%</td>
             <td class="px-6 py-3 text-center">
               {% if s.category == 'Fast Learner' %}
-                <span class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-semibold">
-                  {{ s.category }}
-                </span>
+                <span class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-semibold">{{ s.category }}</span>
               {% elif s.category == 'Average Learner' %}
-                <span class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs font-semibold">
-                  {{ s.category }}
-                </span>
+                <span class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs font-semibold">{{ s.category }}</span>
               {% else %}
-                <span class="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-semibold">
-                  {{ s.category }}
-                </span>
+                <span class="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-semibold">{{ s.category }}</span>
               {% endif %}
             </td>
-            <td class="px-6 py-3">
-              {% if s.weak_topics %}
-                {{ s.weak_topics | join(', ') }}
+            <td class="px-6 py-3">{{ s.weak_topics | join(', ') if s.weak_topics else '-' }}</td>
+            <td class="px-6 py-3 text-center">{{ s.followup_score or '-' }}</td>
+            <td class="px-6 py-3 text-center font-medium">
+              {% if s.improvement and s.improvement > 0 %}
+                <span class="text-green-600">+{{ s.improvement }}%</span>
+              {% elif s.improvement and s.improvement < 0 %}
+                <span class="text-red-600">{{ s.improvement }}%</span>
               {% else %}
-                -
+                <span class="text-gray-500">0%</span>
               {% endif %}
             </td>
-            <td class="px-6 py-3 text-center">
-              {% if s.followup_score %}
-                {{ s.followup_score }}
-              {% else %}
-                -
-              {% endif %}
-            </td>
-            <td class="px-6 py-3 text-center">
-              {% if s.improvement is not none %}
-                {{ s.improvement }}
-              {% else %}
-                -
-              {% endif %}
-            </td>
-            <td class="px-6 py-3">
-              {% if s.weak_topics_after_followup %}
-                {{ s.weak_topics_after_followup | join(', ') }}
-              {% else %}
-                -
-              {% endif %}
-            </td>
+            <td class="px-6 py-3">{{ s.weak_topics_after_followup | join(', ') if s.weak_topics_after_followup else '-' }}</td>
           </tr>
           {% endif %}
           {% endfor %}
