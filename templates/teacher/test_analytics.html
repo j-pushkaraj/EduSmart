@@ -17,14 +17,12 @@
   <!-- Summary Cards -->
   <div class="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-4 gap-6 mb-12">
     {% set summary = report.summary %}
-
     {% set cards = [
       {'label': '👩‍🎓 Total Students', 'value': summary.total_students, 'color': 'from-indigo-500 to-indigo-600'},
       {'label': '📝 Attempted', 'value': summary.attempted, 'color': 'from-green-500 to-green-600'},
       {'label': '📊 Average Score', 'value': summary.avg_score|string + '%', 'color': 'from-yellow-400 to-yellow-500'},
       {'label': '⚠️ Weakest Topic', 'value': summary.weakest_topic_overall or 'N/A', 'color': 'from-red-500 to-red-600'}
     ] %}
-
     {% for card in cards %}
       <div class="bg-gradient-to-br {{ card.color }} text-white rounded-2xl p-6 shadow-lg transform hover:scale-105 transition">
         <p class="text-sm uppercase opacity-80">{{ card.label }}</p>
@@ -40,9 +38,7 @@
       <h2 class="text-2xl font-bold text-green-600">
         {{ summary.highest_scorer.name if summary.highest_scorer else 'N/A' }}
       </h2>
-      <p class="text-gray-700 text-sm">
-        {{ summary.highest_score if summary.highest_score is not none else '-' }}%
-      </p>
+      <p class="text-gray-700 text-sm">{{ summary.highest_score if summary.highest_score is not none else '-' }}%</p>
     </div>
 
     <div class="bg-white rounded-2xl p-6 shadow text-center hover:shadow-md transition">
@@ -50,9 +46,7 @@
       <h2 class="text-2xl font-bold text-red-600">
         {{ summary.lowest_scorer.name if summary.lowest_scorer else 'N/A' }}
       </h2>
-      <p class="text-gray-700 text-sm">
-        {{ summary.lowest_score if summary.lowest_score is not none else '-' }}%
-      </p>
+      <p class="text-gray-700 text-sm">{{ summary.lowest_score if summary.lowest_score is not none else '-' }}%</p>
     </div>
 
     <div class="bg-white rounded-2xl p-6 shadow text-center hover:shadow-md transition">
@@ -60,9 +54,7 @@
       <h2 class="text-2xl font-bold text-green-600">
         {{ summary.highest_improvement_student.name if summary.highest_improvement_student else 'N/A' }}
       </h2>
-      <p class="text-gray-700 text-sm">
-        +{{ summary.highest_improvement if summary.highest_improvement is not none else 0 }}%
-      </p>
+      <p class="text-gray-700 text-sm">{{ summary.highest_improvement or '0%' }}</p>
     </div>
 
     <div class="bg-white rounded-2xl p-6 shadow text-center hover:shadow-md transition">
@@ -70,9 +62,7 @@
       <h2 class="text-2xl font-bold text-red-600">
         {{ summary.lowest_improvement_student.name if summary.lowest_improvement_student else 'N/A' }}
       </h2>
-      <p class="text-gray-700 text-sm">
-        {{ summary.lowest_improvement if summary.lowest_improvement is not none else 0 }}%
-      </p>
+      <p class="text-gray-700 text-sm">{{ summary.lowest_improvement or '0%' }}</p>
     </div>
   </div>
 
@@ -81,6 +71,7 @@
     <div class="px-6 py-4 border-b">
       <h2 class="text-xl font-semibold text-gray-700">📊 Student Performance Breakdown</h2>
     </div>
+
     <div class="overflow-x-auto">
       <table class="min-w-full text-left text-sm text-gray-700">
         <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
@@ -109,18 +100,29 @@
                 <span class="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-semibold">{{ s.category }}</span>
               {% endif %}
             </td>
+
             <td class="px-6 py-3">{{ s.weak_topics | join(', ') if s.weak_topics else '-' }}</td>
             <td class="px-6 py-3 text-center">{{ s.followup_score or '-' }}</td>
+
+            <!-- FIXED IMPROVEMENT LOGIC -->
             <td class="px-6 py-3 text-center font-medium">
-              {% if s.improvement and s.improvement > 0 %}
-                <span class="text-green-600">+{{ s.improvement }}%</span>
-              {% elif s.improvement and s.improvement < 0 %}
-                <span class="text-red-600">{{ s.improvement }}%</span>
+              {% if s.improvement_display in ['Not Required', '-', '0%'] %}
+                <span class="text-gray-500">{{ s.improvement_display }}</span>
               {% else %}
-                <span class="text-gray-500">0%</span>
+                {% set value = s.improvement if s.improvement is number else 0 %}
+                {% if value > 0 %}
+                  <span class="text-green-600">{{ s.improvement_display }}</span>
+                {% elif value < 0 %}
+                  <span class="text-red-600">{{ s.improvement_display }}</span>
+                {% else %}
+                  <span class="text-gray-500">{{ s.improvement_display }}</span>
+                {% endif %}
               {% endif %}
             </td>
-            <td class="px-6 py-3">{{ s.weak_topics_after_followup | join(', ') if s.weak_topics_after_followup else '-' }}</td>
+
+            <td class="px-6 py-3">
+              {{ s.weak_topics_after_followup | join(', ') if s.weak_topics_after_followup else '-' }}
+            </td>
           </tr>
           {% endif %}
           {% endfor %}

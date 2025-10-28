@@ -464,6 +464,34 @@ def find_weakest_topic(test_id):
 
 from collections import Counter
 
+def calculate_student_score(attempt_id):
+    """
+    Calculate a student's test score based on correct answers and question marks.
+    Returns (obtained_marks, percent).
+    """
+    attempt = TestAttempt.query.get(attempt_id)
+    if not attempt:
+        return 0, 0
+
+    answers = StudentAnswer.query.filter_by(attempt_id=attempt_id).all()
+    if not answers:
+        return 0, 0
+
+    total_marks = 0
+    obtained_marks = 0
+
+    for ans in answers:
+        question = Question.query.get(ans.question_id)
+        if not question:
+            continue
+        total_marks += question.marks or 1
+        if ans.is_correct:
+            obtained_marks += question.marks or 1
+
+    percent = round((obtained_marks / total_marks) * 100, 2) if total_marks else 0
+    return obtained_marks, percent
+
+
 def generate_detailed_test_report(test_id):
     """Generate detailed analytics for a test including score stats, weak topics, and improvement."""
     test = Test.query.get_or_404(test_id)
@@ -482,17 +510,22 @@ def generate_detailed_test_report(test_id):
     attempted_ids = [a.student_id for a in attempts]
     not_attempted = [s for s in students if s.id not in attempted_ids]
 
-    # === Compute overall score stats ===
+    # === Recalculate all scores dynamically ===
+    for a in attempts:
+        obtained, percent = calculate_student_score(a.id)
+        a.score = obtained
+        a.percent = percent if hasattr(a, 'percent') else None
+    db.session.commit()
+
+    # === Compute overall stats ===
     scores = [((a.score or 0) / test.max_score) * 100 for a in attempts if test.max_score]
     avg_score = round(sum(scores) / len(scores), 2) if scores else 0
 
-    # Identify highest/lowest scorer
     highest_attempt = max(attempts, key=lambda a: a.score or 0, default=None)
     lowest_attempt = min(attempts, key=lambda a: a.score or 0, default=None)
 
     highest_score = ((highest_attempt.score or 0) / test.max_score) * 100 if highest_attempt else 0
     lowest_score = ((lowest_attempt.score or 0) / test.max_score) * 100 if lowest_attempt else 0
-
     highest_scorer = User.query.get(highest_attempt.student_id) if highest_attempt else None
     lowest_scorer = User.query.get(lowest_attempt.student_id) if lowest_attempt else None
 
@@ -503,6 +536,7 @@ def generate_detailed_test_report(test_id):
     for student in students:
         attempt = next((a for a in attempts if a.student_id == student.id), None)
 
+        # Not attempted
         if not attempt:
             student_reports.append({
                 "student": student.name,
@@ -512,43 +546,41 @@ def generate_detailed_test_report(test_id):
                 "category": "Not Attempted",
                 "followup_score": "-",
                 "improvement": "-",
+                "improvement_display": "-",
                 "weak_topics_after_followup": ["-"],
             })
             continue
 
-        score = attempt.score or 0
-        percent = round((score / test.max_score) * 100, 2) if test.max_score else 0
+        # === Compute actual score ===
+        obtained, percent = calculate_student_score(attempt.id)
 
-        # === Fetch weak topics ===
+        # === Weak topics ===
         reviews = StudentReview.query.filter_by(student_id=student.id, test_id=test.id).all()
         weak_topics = [r.topic_name for r in reviews if r.topic_name] if reviews else []
 
         # === Follow-up performance ===
         followups = FollowupAssignment.query.filter_by(student_id=student.id).all()
         followup_attempts = [f for f in followups if f.is_attempted]
-
+        followup_score = 0
         if followup_attempts:
             total_followup = len(followup_attempts)
             correct_followup = sum(1 for f in followup_attempts if f.is_correct)
             followup_score = round((correct_followup / total_followup) * 100, 2)
-        else:
-            followup_score = 0
 
         # === Remaining Weak Topics ===
         remaining_topics = []
-        if followup_attempts:
-            for f in followup_attempts:
-                if not f.is_correct and f.topic_id:
-                    topic = Topic.query.get(f.topic_id)
-                    if topic:
-                        remaining_topics.append(topic.name)
+        for f in followup_attempts:
+            if not f.is_correct and f.topic_id:
+                topic = Topic.query.get(f.topic_id)
+                if topic:
+                    remaining_topics.append(topic.name)
         remaining_topics = list(set(remaining_topics))
         all_remaining_topics.extend(remaining_topics)
 
         # === Improvement ===
         improvement = round(followup_score - percent, 2)
 
-        # === Learning Category ===
+        # === Category ===
         if percent >= 85:
             category = "Fast Learner"
         elif percent >= 50:
@@ -556,35 +588,47 @@ def generate_detailed_test_report(test_id):
         else:
             category = "Slow Learner"
 
-        # === Handle 100% Scorers ===
+        # === Perfect scorer (no follow-up needed) ===
         if percent == 100:
             weak_topics = ["No Weak Topics 🎯"]
             remaining_topics = ["No Weak Topics 🎯"]
             followup_score = "Not Required"
             improvement = "Not Required"
+            improvement_display = "Not Required"
+        else:
+            if isinstance(improvement, (int, float)):
+                if improvement > 0:
+                    improvement_display = f"+{improvement:.1f}%"
+                elif improvement < 0:
+                    improvement_display = f"{improvement:.1f}%"
+                else:
+                    improvement_display = "0%"
+            else:
+                improvement_display = str(improvement)
 
         student_reports.append({
             "student": student.name,
             "score": percent,
             "percent": percent,
-            "weak_topics": weak_topics,
+            "weak_topics": weak_topics or ["-"],
             "followup_score": followup_score,
             "improvement": improvement,
+            "improvement_display": improvement_display,
             "weak_topics_after_followup": remaining_topics or ["-"],
             "category": category,
         })
 
-    # === Highest/Lowest Improvement ===
+    # === Improvement summary ===
     improvements = [r for r in student_reports if isinstance(r["improvement"], (int, float))]
     highest_improvement = max(improvements, key=lambda x: x["improvement"], default=None)
     lowest_improvement = min(improvements, key=lambda x: x["improvement"], default=None)
 
-    # === Weakest Topic Overall (most frequent remaining topics) ===
+    # === Weakest topic overall ===
     topic_counter = Counter(t for t in all_remaining_topics if t not in ["No Weak Topics 🎯", "-"])
     if topic_counter:
         max_freq = max(topic_counter.values())
-        weakest_topics = [t for t, freq in topic_counter.items() if freq == max_freq and freq > 1]
-        weakest_topic_overall = ", ".join(weakest_topics) if weakest_topics else "N/A"
+        weakest_topics = [t for t, freq in topic_counter.items() if freq == max_freq]
+        weakest_topic_overall = ", ".join(weakest_topics)
     else:
         weakest_topic_overall = "No Weak Topics 🎯"
 
@@ -600,14 +644,15 @@ def generate_detailed_test_report(test_id):
             "weakest_topic_overall": weakest_topic_overall,
             "highest_scorer": highest_scorer,
             "lowest_scorer": lowest_scorer,
-            "highest_improvement": highest_improvement["improvement"] if highest_improvement else None,
-            "lowest_improvement": lowest_improvement["improvement"] if lowest_improvement else None,
+            "highest_improvement": highest_improvement["improvement_display"] if highest_improvement else None,
+            "lowest_improvement": lowest_improvement["improvement_display"] if lowest_improvement else None,
             "highest_improvement_student": User.query.filter_by(name=highest_improvement["student"]).first() if highest_improvement else None,
             "lowest_improvement_student": User.query.filter_by(name=lowest_improvement["student"]).first() if lowest_improvement else None,
         },
         "students": student_reports,
         "not_attempted_students": [s.name for s in not_attempted],
     }
+
 
 # ================================
 # 📊 TEST ANALYTICS (Detailed Dashboard View)
